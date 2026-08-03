@@ -60,8 +60,8 @@ export class Player {
     return now >= this.attackCooldownUntil;
   }
 
-  markAttack(now: number): void {
-    this.attackCooldownUntil = now + PHYSICS.attackCooldownMs;
+  markAttack(now: number, cooldownMs?: number): void {
+    this.attackCooldownUntil = now + (cooldownMs ?? PHYSICS.attackCooldownMs);
   }
 
   update(

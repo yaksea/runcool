@@ -2,16 +2,20 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { WeaponPickup } from '../entities/WeaponPickup';
-import { firePea, retirePhysicsSprite } from '../entities/Projectile';
+import { fireProjectile, retirePhysicsSprite } from '../entities/Projectile';
 import { Seesaw } from '../entities/Seesaw';
 import { FanZone } from '../entities/FanZone';
 import { CrumblePlatform } from '../entities/CrumblePlatform';
 import { Bumper } from '../entities/Bumper';
+import { PortalPairSystem } from '../entities/Portal';
+import { Geyser } from '../entities/Geyser';
+import { TimedPlatform } from '../entities/TimedPlatform';
 import { getLevelById, LEVELS } from '../levels';
 import type { LadderDef, LevelDef } from '../levels/types';
-import { ZH, weaponLabel } from '../i18n/zh';
+import { ZH, weaponLabel, weaponPickupToast } from '../i18n/zh';
 import { THEME } from '../style/theme';
-import { SaveSystem } from '../systems/SaveSystem';
+import { WEAPON_STATS } from '../game/weapons';
+import { SaveSystem, type WeaponType } from '../systems/SaveSystem';
 
 export type GameSceneData = {
   levelId: string;
@@ -39,19 +43,32 @@ export class GameScene extends Phaser.Scene {
   private keySpace!: Phaser.Input.Keyboard.Key;
   private keyJ!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
+  private keyB!: Phaser.Input.Keyboard.Key;
 
   private checkpointIndex = -1;
   private elapsedMs = 0;
   private deaths = 0;
   private runActive = true;
   private paused = false;
+  private inventoryOpen = false;
   private dying = false;
   private ladders: LadderDef[] = [];
   private seesaws: Seesaw[] = [];
   private fans: FanZone[] = [];
   private crumbles: CrumblePlatform[] = [];
   private bumpers: Bumper[] = [];
-  private conveyors: { sprite: Phaser.Physics.Arcade.Sprite; dir: -1 | 1; speed: number }[] = [];
+  private portals: PortalPairSystem | null = null;
+  private geysers: Geyser[] = [];
+  private timedPlatforms: TimedPlatform[] = [];
+  private conveyors: {
+    sprite: Phaser.Physics.Arcade.Sprite;
+    dir: -1 | 1;
+    speed: number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }[] = [];
   private movingMeta: {
     sprite: Phaser.Physics.Arcade.Sprite;
     axis: 'x' | 'y';
@@ -77,9 +94,13 @@ export class GameScene extends Phaser.Scene {
     this.fans = [];
     this.crumbles = [];
     this.bumpers = [];
+    this.portals = null;
+    this.geysers = [];
+    this.timedPlatforms = [];
     this.conveyors = [];
     this.runActive = true;
     this.paused = false;
+    this.inventoryOpen = false;
     this.dying = false;
 
     const save = SaveSystem.load();
@@ -114,6 +135,9 @@ export class GameScene extends Phaser.Scene {
     this.buildFans();
     this.buildCrumbles();
     this.buildBumpers();
+    this.buildPortals();
+    this.buildGeysers();
+    this.buildTimedPlatforms();
     this.buildSpikes();
     this.buildPads();
     this.buildCheckpoints();
@@ -121,6 +145,7 @@ export class GameScene extends Phaser.Scene {
     this.spawnPlayer();
     this.spawnEnemies();
     this.spawnWeapons();
+    this.portals?.suppress(1500);
 
     // Climbing: skip solid floors so ladders can pass through platforms.
     this.physics.add.collider(
@@ -175,7 +200,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    if (!this.runActive || this.paused || this.dying) return;
+    if (this.runActive && !this.dying) {
+      if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
+        this.toggleInventory();
+      } else if (Phaser.Input.Keyboard.JustDown(this.keyP) && !this.inventoryOpen) {
+        this.togglePause();
+      }
+    }
+
+    if (!this.runActive || this.paused || this.inventoryOpen || this.dying) return;
 
     this.elapsedMs += delta;
     const onLadder = this.isPlayerOnLadder();
@@ -194,24 +227,24 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
       this.tryAttack();
     }
-    if (Phaser.Input.Keyboard.JustDown(this.keyP)) {
-      this.togglePause();
-    }
 
-    this.enemies.forEach((e) => e.update());
+    this.enemies.forEach((e) => e.update(this.player));
     this.updateMovingPlatforms(delta);
     this.seesaws.forEach((s) => s.updateTilt(this.player, delta));
     this.fans.forEach((f) => f.apply(this.player, delta));
     this.crumbles.forEach((c) => c.update(this.player, delta));
     this.bumpers.forEach((b) => b.tryHit(this.player));
-    this.applyConveyors();
+    this.portals?.tryTeleport(this.player);
+    this.geysers.forEach((g) => g.update(this.player));
+    this.timedPlatforms.forEach((t) => t.update());
+    this.applyConveyors(delta);
     this.checkFallDeath();
     this.checkCheckpoints();
     this.events.emit('hud', this.getHudPayload());
   }
 
   private postUpdateSeesaws(): void {
-    if (!this.runActive || this.paused || this.dying || !this.player) return;
+    if (!this.runActive || this.paused || this.inventoryOpen || this.dying || !this.player) return;
     this.seesaws.forEach((s) => s.supportPlayer(this.player));
   }
 
@@ -225,6 +258,7 @@ export class GameScene extends Phaser.Scene {
     this.keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyJ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.J);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
+    this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
   }
 
   private drawParallax(): void {
@@ -310,7 +344,15 @@ export class GameScene extends Phaser.Scene {
       sprite.setDisplaySize(c.w, c.h);
       sprite.setFlipX(c.dir < 0);
       sprite.refreshBody();
-      this.conveyors.push({ sprite, dir: c.dir, speed: c.speed });
+      this.conveyors.push({
+        sprite,
+        dir: c.dir,
+        speed: c.speed,
+        x: c.x,
+        y: c.y,
+        w: c.w,
+        h: c.h,
+      });
     });
   }
 
@@ -332,17 +374,44 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private applyConveyors(): void {
+  private buildPortals(): void {
+    const defs = this.level.portals ?? [];
+    if (defs.length) this.portals = new PortalPairSystem(this, defs);
+  }
+
+  private buildGeysers(): void {
+    (this.level.geysers ?? []).forEach((def) => {
+      this.geysers.push(new Geyser(this, def));
+    });
+  }
+
+  private buildTimedPlatforms(): void {
+    (this.level.timedPlatforms ?? []).forEach((def) => {
+      this.timedPlatforms.push(new TimedPlatform(this, this.platforms, def));
+    });
+  }
+
+  private applyConveyors(delta: number): void {
     if (this.player.climbing) return;
     const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
-    if (!(body.blocked.down || body.touching.down)) return;
+    // Prefer geometry check; also accept physics touching for reliability.
     const px = this.player.sprite.x;
-    const py = this.player.sprite.y + 18;
+    const foot = this.player.sprite.y + 18;
+    const dt = delta / 1000;
+
     for (const c of this.conveyors) {
-      const b = c.sprite.body as Phaser.Physics.Arcade.StaticBody;
-      if (px > b.left && px < b.right && py > b.top - 4 && py < b.bottom + 8) {
-        body.velocity.x += c.dir * c.speed * 0.08;
-      }
+      const onBelt =
+        px > c.x + 2 &&
+        px < c.x + c.w - 2 &&
+        foot > c.y - 10 &&
+        foot < c.y + c.h + 12 &&
+        (body.blocked.down || body.touching.down || body.velocity.y >= 0);
+      if (!onBelt) continue;
+
+      // Position carry — survives player setVelocityX(0) + drag.
+      this.player.sprite.x += c.dir * c.speed * dt;
+      body.velocity.x += c.dir * c.speed * 0.35;
+      this.player.markSupported();
     }
   }
 
@@ -440,9 +509,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.player = new Player(this, x, y);
     const save = SaveSystem.load();
-    if (save.activeRun?.weapon) {
-      this.player.setWeapon(save.activeRun.weapon);
-    }
+    const weapon = save.activeRun?.weapon ?? save.equipped;
+    this.player.setWeapon(weapon);
   }
 
   private spawnEnemies(): void {
@@ -462,8 +530,9 @@ export class GameScene extends Phaser.Scene {
       this.physics.add.overlap(this.projectiles, enemy.sprite, (proj) => {
         const pea = proj as Phaser.Physics.Arcade.Sprite;
         if (enemy.dead || pea.getData('spent')) return;
+        const dmg = (pea.getData('damage') as number) || 2;
         retirePhysicsSprite(pea);
-        enemy.takeHit(1, this.player.facing);
+        enemy.takeHit(dmg, this.player.facing);
       });
     });
   }
@@ -481,33 +550,48 @@ export class GameScene extends Phaser.Scene {
   private tryAttack(): void {
     const now = this.time.now;
     if (!this.player.canAttack(now)) return;
-    this.player.markAttack(now);
+    const stats = WEAPON_STATS[this.player.weapon];
+    this.player.markAttack(now, stats.cooldownMs);
 
     const px = this.player.sprite.x + this.player.facing * 28;
     const py = this.player.sprite.y;
+    const dir = this.player.facing;
 
-    if (this.player.weapon === 'peashooter') {
-      firePea(this, this.projectiles, px, py, this.player.facing);
+    if (stats.pellets > 0) {
+      for (let i = 0; i < stats.pellets; i++) {
+        const t = stats.pellets === 1 ? 0 : i / (stats.pellets - 1) - 0.5;
+        const vy = t * stats.spread * stats.projSpeed;
+        fireProjectile(this, this.projectiles, {
+          x: px,
+          y: py,
+          dir,
+          key: stats.projKey,
+          speed: stats.projSpeed,
+          damage: stats.projDamage,
+          scale: this.player.weapon === 'fireball' ? 1.35 : 1,
+          vy,
+        });
+      }
       return;
     }
 
-    const isGlove = this.player.weapon === 'glove';
-    const damage = isGlove ? 1 : 0;
-    const range = isGlove ? 46 : 30;
+    const damage = stats.meleeDamage;
+    const range = stats.meleeRange || 30;
     this.enemies.forEach((enemy) => {
-      if (!enemy.sprite.active) return;
+      if (!enemy.sprite.active || enemy.dead) return;
       const dx = enemy.sprite.x - this.player.sprite.x;
       const dy = Math.abs(enemy.sprite.y - this.player.sprite.y);
-      if (Math.sign(dx || this.player.facing) === this.player.facing && Math.abs(dx) < range && dy < 36) {
-        if (damage > 0) {
-          enemy.takeHit(damage, this.player.facing);
-        } else if (enemy.type === 'slime') {
-          enemy.sprite.setVelocityX(this.player.facing * 220);
+      if (Math.sign(dx || dir) === dir && Math.abs(dx) < range && dy < 40) {
+        if (damage > 0) enemy.takeHit(damage, dir);
+        else if (enemy.type === 'slime' || enemy.type === 'hopper') {
+          enemy.sprite.setVelocityX(dir * 240);
         }
       }
     });
 
-    const swipe = this.add.rectangle(px, py, range, 24, 0xffffff, 0.35).setDepth(11);
+    const swipe = this.add
+      .rectangle(px, py, range, this.player.weapon === 'hammer' ? 36 : 24, 0xffffff, 0.35)
+      .setDepth(11);
     this.tweens.add({
       targets: swipe,
       alpha: 0,
@@ -525,10 +609,11 @@ export class GameScene extends Phaser.Scene {
 
   private onPickup(pickup: WeaponPickup): void {
     if (!pickup.sprite.active) return;
+    const owned = SaveSystem.getInventory().includes(pickup.weapon);
+    SaveSystem.collectWeapon(pickup.weapon);
     this.player.setWeapon(pickup.weapon);
-    SaveSystem.updateRun({ weapon: pickup.weapon });
-    const msg = pickup.weapon === 'glove' ? ZH.gotGlove : ZH.gotPeashooter;
-    this.events.emit('toast', msg);
+    this.events.emit('toast', owned ? ZH.alreadyOwned : weaponPickupToast(pickup.weapon));
+    this.events.emit('hud', this.getHudPayload());
     pickup.destroy();
   }
 
@@ -541,7 +626,7 @@ export class GameScene extends Phaser.Scene {
   private checkCheckpoints(): void {
     this.level.checkpoints.forEach((c, i) => {
       if (i <= this.checkpointIndex) return;
-      if (Math.abs(this.player.sprite.x - c.x) < 36 && Math.abs(this.player.sprite.y - c.y) < 50) {
+      if (Math.abs(this.player.sprite.x - c.x) < 48 && Math.abs(this.player.sprite.y - c.y) < 64) {
         this.checkpointIndex = i;
         this.checkpointSprites[i]?.setTexture('checkpoint_on');
         SaveSystem.updateRun({
@@ -579,6 +664,7 @@ export class GameScene extends Phaser.Scene {
       }
       this.player.respawn(x, y);
       this.player.makeInvincible(this.time.now, 1000);
+      this.portals?.suppress(1500);
       this.dying = false;
     });
   }
@@ -614,7 +700,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   togglePause(): void {
-    if (this.dying) return;
+    if (this.dying || this.inventoryOpen) return;
     if (!this.runActive && !this.paused) return;
     this.paused = !this.paused;
     if (this.paused) {
@@ -624,6 +710,35 @@ export class GameScene extends Phaser.Scene {
       this.physics.resume();
       this.events.emit('pause', false);
     }
+  }
+
+  toggleInventory(): void {
+    if (this.dying || this.paused) return;
+    if (!this.runActive && !this.inventoryOpen) return;
+    this.inventoryOpen = !this.inventoryOpen;
+    if (this.inventoryOpen) {
+      this.physics.pause();
+      this.emitInventory();
+    } else {
+      this.physics.resume();
+      this.events.emit('inventory', { open: false });
+    }
+  }
+
+  equipWeapon(weapon: WeaponType): void {
+    const data = SaveSystem.equipWeapon(weapon);
+    this.player.setWeapon(data.equipped);
+    this.events.emit('hud', this.getHudPayload());
+    if (this.inventoryOpen) this.emitInventory();
+  }
+
+  private emitInventory(): void {
+    const data = SaveSystem.load();
+    this.events.emit('inventory', {
+      open: true,
+      inventory: data.inventory,
+      equipped: data.equipped,
+    });
   }
 
   restartLevel(): void {

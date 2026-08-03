@@ -1,7 +1,14 @@
 import Phaser from 'phaser';
-import { ZH } from '../i18n/zh';
+import { ZH, weaponLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
+import { SaveSystem, type InventoryWeapon, type WeaponType } from '../systems/SaveSystem';
 import type { GameScene } from './GameScene';
+
+type InventoryPayload = {
+  open: boolean;
+  inventory?: InventoryWeapon[];
+  equipped?: WeaponType;
+};
 
 export class UIScene extends Phaser.Scene {
   private timeText!: Phaser.GameObjects.Text;
@@ -9,6 +16,7 @@ export class UIScene extends Phaser.Scene {
   private weaponText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private pauseLayer?: Phaser.GameObjects.Container;
+  private bagLayer?: Phaser.GameObjects.Container;
   private winLayer?: Phaser.GameObjects.Container;
 
   constructor() {
@@ -33,6 +41,10 @@ export class UIScene extends Phaser.Scene {
     this.deathText = this.add.text(16, 84, `${ZH.deaths}: 0`, style).setScrollFactor(0).setDepth(100);
     this.weaponText = this.add
       .text(16, 120, `${ZH.weapon}: ${ZH.weaponNone}`, style)
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.add
+      .text(16, 156, `${ZH.bag}: B`, style)
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -60,6 +72,10 @@ export class UIScene extends Phaser.Scene {
       if (paused) this.showPause();
       else this.hidePause();
     });
+    game.events.on('inventory', (payload: InventoryPayload) => {
+      if (payload.open) this.showBag(payload);
+      else this.hideBag();
+    });
     game.events.on('win', (payload: {
       timeMs: number;
       deaths: number;
@@ -73,6 +89,7 @@ export class UIScene extends Phaser.Scene {
       game.events.off('hud');
       game.events.off('toast');
       game.events.off('pause');
+      game.events.off('inventory');
       game.events.off('win');
     });
   }
@@ -140,6 +157,135 @@ export class UIScene extends Phaser.Scene {
     this.pauseLayer = undefined;
   }
 
+  private showBag(payload: InventoryPayload): void {
+    this.hideBag();
+    const game = this.scene.get('GameScene') as GameScene;
+    const inventory = payload.inventory ?? [];
+    const equipped = payload.equipped ?? 'none';
+    const cx = THEME.width / 2;
+    const cy = THEME.height / 2;
+
+    const c = this.add.container(0, 0).setDepth(210).setScrollFactor(0);
+    c.add(this.add.rectangle(cx, cy, THEME.width, THEME.height, 0x000000, 0.5));
+    c.add(
+      this.add
+        .rectangle(cx, cy, 560, 340, 0xffffff, 0.97)
+        .setStrokeStyle(3, THEME.button),
+    );
+    c.add(
+      this.add
+        .text(cx, cy - 140, ZH.bag, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '32px',
+          color: '#1f2d3d',
+          fontStyle: 'bold',
+        })
+        .setOrigin(0.5),
+    );
+    c.add(
+      this.add
+        .text(cx, cy - 104, ZH.bagHint, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: '#667788',
+        })
+        .setOrigin(0.5),
+    );
+
+    const slots: Array<{ weapon: WeaponType; texture?: string }> = [
+      { weapon: 'none' },
+      ...SaveSystem.allWeaponSlots().map((w) => ({ weapon: w as WeaponType, texture: w })),
+    ];
+    const slotW = 72;
+    const gap = 14;
+    const totalW = slots.length * slotW + (slots.length - 1) * gap;
+    const startX = cx - totalW / 2 + slotW / 2;
+    const slotY = cy - 10;
+
+    slots.forEach((slot, i) => {
+      const x = startX + i * (slotW + gap);
+      const owned = slot.weapon === 'none' || inventory.includes(slot.weapon as InventoryWeapon);
+      const isEquipped = equipped === slot.weapon;
+      const bg = this.add
+        .rectangle(x, slotY, slotW, 96, owned ? 0xf4f7fa : 0xe8ecf0)
+        .setStrokeStyle(3, isEquipped ? THEME.button : 0xcbd5e1);
+
+      const kids: Phaser.GameObjects.GameObject[] = [bg];
+      if (slot.texture && this.textures.exists(slot.texture)) {
+        const icon = this.add.image(x, slotY - 16, slot.texture).setScale(owned ? 1.1 : 0.85);
+        if (!owned) icon.setAlpha(0.35);
+        kids.push(icon);
+      } else {
+        kids.push(
+          this.add
+            .text(x, slotY - 16, '·', {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '28px',
+              color: owned ? '#1f2d3d' : '#99aabb',
+            })
+            .setOrigin(0.5),
+        );
+      }
+
+      kids.push(
+        this.add
+          .text(x, slotY + 28, weaponLabel(slot.weapon), {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: owned ? '#1f2d3d' : '#99aabb',
+            align: 'center',
+            wordWrap: { width: slotW - 6 },
+          })
+          .setOrigin(0.5),
+      );
+
+      if (isEquipped) {
+        kids.push(
+          this.add
+            .text(x, slotY + 46, ZH.equipped, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '11px',
+              color: '#ff6b4a',
+            })
+            .setOrigin(0.5),
+        );
+      }
+
+      if (owned) {
+        bg.setInteractive({ useHandCursor: true });
+        bg.on('pointerover', () => {
+          if (!isEquipped) bg.setFillStyle(0xe8f4ff);
+        });
+        bg.on('pointerout', () => {
+          bg.setFillStyle(0xf4f7fa);
+        });
+        bg.on('pointerdown', () => game.equipWeapon(slot.weapon));
+      }
+
+      c.add(kids);
+    });
+
+    if (inventory.length === 0) {
+      c.add(
+        this.add
+          .text(cx, cy + 70, ZH.bagEmpty, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '16px',
+            color: '#778899',
+          })
+          .setOrigin(0.5),
+      );
+    }
+
+    this.makeBtn(c, cx, cy + 120, ZH.resume, () => game.toggleInventory());
+    this.bagLayer = c;
+  }
+
+  private hideBag(): void {
+    this.bagLayer?.destroy(true);
+    this.bagLayer = undefined;
+  }
+
   private showWin(payload: {
     timeMs: number;
     deaths: number;
@@ -148,6 +294,7 @@ export class UIScene extends Phaser.Scene {
     nextLevelId?: string;
   }): void {
     if (this.winLayer) return;
+    this.hideBag();
     const game = this.scene.get('GameScene') as GameScene;
     const c = this.add.container(0, 0).setDepth(220).setScrollFactor(0);
     c.add(this.add.rectangle(THEME.width / 2, THEME.height / 2, THEME.width, THEME.height, 0x000000, 0.5));

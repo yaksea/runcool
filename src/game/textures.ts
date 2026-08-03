@@ -342,4 +342,91 @@ export function generateTextures(scene: Phaser.Scene): void {
     40,
     52,
   );
+
+  ensure(scene, 'hammer', (g) => {
+    g.fillStyle(0x7f8c8d, 1);
+    g.fillRoundedRect(18, 4, 10, 28, 3);
+    g.fillStyle(0x566573, 1);
+    g.fillRoundedRect(6, 2, 34, 14, 4);
+  }, 46, 36);
+
+  ensure(scene, 'fireball', (g) => {
+    g.fillStyle(0xe67e22, 1);
+    g.fillCircle(12, 12, 11);
+    g.fillStyle(0xf1c40f, 1);
+    g.fillCircle(12, 12, 6);
+    g.fillStyle(0xffffff, 0.8);
+    g.fillCircle(9, 9, 2);
+  }, 24, 24);
+
+  ensure(scene, 'shotgun', (g) => {
+    g.fillStyle(0x1abc9c, 1);
+    g.fillRoundedRect(2, 12, 32, 12, 3);
+    g.fillCircle(10, 18, 10);
+    g.fillStyle(0x148f77, 1);
+    g.fillRect(30, 10, 12, 6);
+    g.fillRect(30, 18, 12, 6);
+  }, 44, 36);
+
+  ensure(scene, 'pellet', (g) => {
+    g.fillStyle(0x1abc9c, 1);
+    g.fillCircle(5, 5, 5);
+  }, 10, 10);
+
+  ensure(scene, 'hopper', (g) => {
+    g.fillStyle(0xf39c12, 1);
+    g.fillEllipse(20, 22, 34, 26);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(12, 18, 3);
+    g.fillCircle(28, 18, 3);
+    g.fillStyle(0xe67e22, 1);
+    g.fillTriangle(6, 30, 12, 36, 10, 28);
+    g.fillTriangle(34, 30, 28, 36, 30, 28);
+  }, 40, 40);
+
+  ensure(scene, 'tank', (g) => {
+    g.fillStyle(0x7d3c98, 1);
+    g.fillRoundedRect(2, 8, 44, 30, 8);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(16, 20, 4);
+    g.fillCircle(34, 20, 4);
+    g.fillStyle(0x9b59b6, 1);
+    g.fillRect(8, 4, 32, 8);
+  }, 48, 40);
+
+  ensure(scene, 'chaser', (g) => {
+    g.fillStyle(0xe74c3c, 1);
+    g.fillEllipse(18, 16, 32, 24);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(12, 14, 5);
+    g.fillCircle(26, 14, 5);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(13, 14, 2);
+    g.fillCircle(27, 14, 2);
+  }, 36, 32);
+
+  ensure(scene, 'portal', (g) => {
+    g.fillStyle(0x8e44ad, 0.35);
+    g.fillCircle(22, 22, 20);
+    g.lineStyle(4, 0xd2b4de, 1);
+    g.strokeCircle(22, 22, 18);
+    g.lineStyle(3, 0xffffff, 0.7);
+    g.strokeCircle(22, 22, 10);
+  }, 44, 44);
+
+  ensure(scene, 'geyser', (g) => {
+    g.fillStyle(0x5dade2, 0.85);
+    g.fillTriangle(20, 4, 6, 48, 34, 48);
+    g.fillStyle(0xaed6f1, 0.7);
+    g.fillTriangle(20, 14, 12, 48, 28, 48);
+  }, 40, 52);
+
+  ensure(scene, 'timed_platform', (g) => {
+    g.fillStyle(0x5dade2, 1);
+    g.fillRoundedRect(0, 8, 64, 36, 4);
+    g.fillStyle(0xd6eaf8, 1);
+    g.fillRoundedRect(0, 0, 64, 14, 5);
+    g.fillStyle(0x2e86c1, 1);
+    g.fillCircle(32, 20, 4);
+  }, 64, 44);
 }

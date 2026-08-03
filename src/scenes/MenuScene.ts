@@ -40,15 +40,15 @@ export class MenuScene extends Phaser.Scene {
     obj.setData('ui', true);
   }
 
-  private makeButton(x: number, y: number, label: string, onClick: () => void): void {
+  private makeButton(x: number, y: number, label: string, onClick: () => void, w = 220, h = 48): void {
     const bg = this.add
-      .rectangle(x, y, 220, 48, THEME.button, 1)
+      .rectangle(x, y, w, h, THEME.button, 1)
       .setStrokeStyle(3, THEME.playerStroke)
       .setInteractive({ useHandCursor: true });
     const text = this.add
       .text(x, y, label, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '22px',
+        fontSize: w < 200 ? '16px' : '22px',
         color: THEME.uiLight,
       })
       .setOrigin(0.5);
@@ -119,9 +119,9 @@ export class MenuScene extends Phaser.Scene {
     const save = SaveSystem.load();
 
     const title = this.add
-      .text(width / 2, 80, ZH.selectLevel, {
+      .text(width / 2, 56, ZH.selectLevel, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '36px',
+        fontSize: '32px',
         color: '#1f2d3d',
         fontStyle: 'bold',
       })
@@ -133,19 +133,22 @@ export class MenuScene extends Phaser.Scene {
       const record = save.levels[level.id];
       const stars = record ? ZH.stars(record.bestStars) : ZH.stars(0);
       const label = unlocked
-        ? `${ZH.level(level.index)}  ${stars}`
-        : `${ZH.level(level.index)}  ${ZH.locked}`;
-      const y = 180 + i * 70;
+        ? `${ZH.level(level.index)} ${stars}`
+        : `${ZH.level(level.index)} ${ZH.locked}`;
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const x = width / 2 - 140 + col * 280;
+      const y = 110 + row * 58;
       if (unlocked) {
-        this.makeButton(width / 2, y, label, () => {
+        this.makeButton(x, y, label, () => {
           SaveSystem.startRun(level.id);
           this.scene.start('GameScene', { levelId: level.id, continueRun: false });
-        });
+        }, 250, 44);
       } else {
         const t = this.add
-          .text(width / 2, y, label, {
+          .text(x, y, label, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '20px',
+            fontSize: '16px',
             color: '#7f8c8d',
           })
           .setOrigin(0.5);
@@ -153,7 +156,7 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    this.makeButton(width / 2, 460, ZH.back, () => {
+    this.makeButton(width / 2, 500, ZH.back, () => {
       this.mode = 'main';
       this.renderMain();
     });

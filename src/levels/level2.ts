@@ -32,9 +32,9 @@ export const level2: LevelDef = {
     { x: 3720, y: 180, w: 320, h: 36 },
   ],
   spikes: [
-    { x: 640, y: 256, count: 2 },
-    { x: 1420, y: 376, count: 3 },
-    { x: 3140, y: 296, count: 2 },
+    { x: 640, y: 280, count: 2 },
+    { x: 1420, y: 400, count: 3 },
+    { x: 3140, y: 320, count: 2 },
   ],
   pads: [{ x: 2520, y: 356 }],
   enemies: [

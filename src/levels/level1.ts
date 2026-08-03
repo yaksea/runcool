@@ -27,8 +27,8 @@ export const level1: LevelDef = {
     { x: 2980, y: 240, w: 280, h: 40 },
   ],
   spikes: [
-    { x: 820, y: 376, count: 2 },
-    { x: 1620, y: 396, count: 2 },
+    { x: 820, y: 400, count: 2 },
+    { x: 1620, y: 420, count: 2 },
   ],
   pads: [{ x: 1920, y: 436 }],
   enemies: [

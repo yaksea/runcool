@@ -39,10 +39,10 @@ export const level3: LevelDef = {
     { x: 3480, y: 200, w: 100, h: 22, axis: 'x', range: 120, speed: 65 },
   ],
   spikes: [
-    { x: 590, y: 276, count: 2 },
-    { x: 1340, y: 276, count: 2 },
-    { x: 2260, y: 296, count: 2 },
-    { x: 3380, y: 256, count: 3 },
+    { x: 590, y: 300, count: 2 },
+    { x: 1340, y: 300, count: 2 },
+    { x: 2260, y: 320, count: 2 },
+    { x: 3380, y: 280, count: 3 },
   ],
   pads: [
     { x: 1600, y: 356 },

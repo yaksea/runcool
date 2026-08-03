@@ -31,6 +31,8 @@ export const PHYSICS = {
   airMoveSpeed: 200,
   jumpVelocity: -520,
   doubleJumpVelocity: -420,
+  coyoteMs: 110,
+  jumpBufferMs: 140,
   invincibleMs: 800,
   attackCooldownMs: 280,
   peaSpeed: 480,

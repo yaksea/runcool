@@ -8,6 +8,8 @@ export class Player {
   weapon: WeaponType = 'none';
   private jumpsUsed = 0;
   private wasOnGround = false;
+  private coyoteUntil = 0;
+  private jumpBufferUntil = 0;
   private invincibleUntil = 0;
   private attackCooldownUntil = 0;
   private squashTween?: Phaser.Tweens.Tween;
@@ -60,11 +62,20 @@ export class Player {
     },
   ): void {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    const now = this.sprite.scene.time.now;
     const onGround = body.blocked.down || body.touching.down;
 
     if (onGround) {
-      this.jumpsUsed = 0;
-      if (!this.wasOnGround) this.playLandSquash();
+      if (!this.wasOnGround) {
+        this.jumpsUsed = 0;
+        this.playLandSquash();
+      }
+      this.coyoteUntil = now + PHYSICS.coyoteMs;
+    } else if (this.wasOnGround) {
+      // Just left the ground: keep coyote window if we didn't already jump.
+      if (this.jumpsUsed === 0) {
+        this.coyoteUntil = now + PHYSICS.coyoteMs;
+      }
     }
     this.wasOnGround = onGround;
 
@@ -90,14 +101,12 @@ export class Player {
       Phaser.Input.Keyboard.JustDown(cursors.up);
 
     if (jumpPressed) {
-      if (onGround) {
-        this.sprite.setVelocityY(PHYSICS.jumpVelocity);
-        this.jumpsUsed = 1;
-        this.playJumpStretch();
-      } else if (this.jumpsUsed < 2) {
-        this.sprite.setVelocityY(PHYSICS.doubleJumpVelocity);
-        this.jumpsUsed = 2;
-        this.playJumpStretch();
+      this.jumpBufferUntil = now + PHYSICS.jumpBufferMs;
+    }
+
+    if (now <= this.jumpBufferUntil) {
+      if (this.tryJump(now, onGround)) {
+        this.jumpBufferUntil = 0;
       }
     }
 
@@ -110,9 +119,33 @@ export class Player {
     this.clearInvincibleVisual();
   }
 
+  private tryJump(now: number, onGround: boolean): boolean {
+    const canGroundJump =
+      this.jumpsUsed === 0 && (onGround || now <= this.coyoteUntil);
+
+    if (canGroundJump) {
+      this.sprite.setVelocityY(PHYSICS.jumpVelocity);
+      this.jumpsUsed = 1;
+      this.coyoteUntil = 0;
+      this.playJumpStretch();
+      return true;
+    }
+
+    if (this.jumpsUsed === 1) {
+      this.sprite.setVelocityY(PHYSICS.doubleJumpVelocity);
+      this.jumpsUsed = 2;
+      this.playJumpStretch();
+      return true;
+    }
+
+    return false;
+  }
+
   bounce(): void {
     this.sprite.setVelocityY(PHYSICS.bouncePadVelocity);
     this.jumpsUsed = 1;
+    this.coyoteUntil = 0;
+    this.jumpBufferUntil = 0;
     this.playJumpStretch();
   }
 
@@ -121,6 +154,9 @@ export class Player {
     this.sprite.setVelocity(0, 0);
     this.sprite.setAlpha(1);
     this.jumpsUsed = 0;
+    this.wasOnGround = false;
+    this.coyoteUntil = 0;
+    this.jumpBufferUntil = 0;
   }
 
   private playLandSquash(): void {

@@ -241,14 +241,34 @@ export class GameScene extends Phaser.Scene {
   private buildSpikes(): void {
     this.level.spikes.forEach((s) => {
       for (let i = 0; i < s.count; i++) {
-        const spike = this.spikes.create(s.x + i * 22, s.y, 'spike') as Phaser.Physics.Arcade.Sprite;
+        const sx = s.x + i * 22;
+        // Bottom-anchored: snap to the platform top under this x so spikes never float.
+        const groundY = this.findPlatformTopAt(sx, s.y);
+        const spike = this.spikes.create(sx, groundY, 'spike') as Phaser.Physics.Arcade.Sprite;
         spike.setOrigin(0.5, 1);
-        spike.refreshBody();
         const body = spike.body as Phaser.Physics.Arcade.StaticBody;
         body.setSize(16, 18);
         body.setOffset(4, 10);
+        spike.refreshBody();
       }
     });
+  }
+
+  /** Nearest platform top at x; prefers tops at or below hintY within a small band. */
+  private findPlatformTopAt(x: number, hintY: number): number {
+    let bestY = hintY;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const p of this.level.platforms) {
+      if (x < p.x - 4 || x > p.x + p.w + 4) continue;
+      const top = p.y;
+      const dist = Math.abs(top - hintY);
+      // Prefer a top close to the authored y (or slightly below floating spikes).
+      if (dist < bestDist && top >= hintY - 40 && top <= hintY + 48) {
+        bestDist = dist;
+        bestY = top;
+      }
+    }
+    return bestY;
   }
 
   private buildPads(): void {

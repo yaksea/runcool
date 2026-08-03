@@ -1,0 +1,41 @@
+import type { LevelDef } from './types';
+
+export const level1: LevelDef = {
+  id: 'level1',
+  index: 1,
+  playerStart: { x: 80, y: 360 },
+  finish: { x: 3180, y: 160 },
+  worldWidth: 3400,
+  worldHeight: 720,
+  threeStarMs: 45000,
+  twoStarMs: 70000,
+  platforms: [
+    { x: 0, y: 480, w: 360, h: 60 },
+    { x: 320, y: 430, w: 140, h: 40 },
+    { x: 440, y: 380, w: 140, h: 40 },
+    { x: 560, y: 330, w: 160, h: 40 },
+    { x: 780, y: 400, w: 180, h: 36 },
+    { x: 1020, y: 360, w: 110, h: 28 },
+    { x: 1200, y: 320, w: 100, h: 28 },
+    { x: 1380, y: 360, w: 110, h: 28 },
+    { x: 1560, y: 420, w: 200, h: 40 },
+    { x: 1860, y: 460, w: 160, h: 40 },
+    { x: 2100, y: 400, w: 120, h: 28 },
+    { x: 2280, y: 340, w: 100, h: 28 },
+    { x: 2460, y: 280, w: 100, h: 28 },
+    { x: 2680, y: 320, w: 220, h: 40 },
+    { x: 2980, y: 240, w: 280, h: 40 },
+  ],
+  spikes: [
+    { x: 820, y: 376, count: 2 },
+    { x: 1620, y: 396, count: 2 },
+  ],
+  pads: [{ x: 1920, y: 436 }],
+  enemies: [
+    { type: 'slime', x: 900, y: 360, patrol: 70 },
+    { type: 'slime', x: 1720, y: 380, patrol: 60 },
+    { type: 'slime', x: 2760, y: 280, patrol: 70 },
+  ],
+  weapons: [{ type: 'glove', x: 600, y: 290 }],
+  checkpoints: [{ x: 1580, y: 380 }],
+};

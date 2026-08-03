@@ -3,8 +3,12 @@ import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { WeaponPickup } from '../entities/WeaponPickup';
 import { firePea, retirePhysicsSprite } from '../entities/Projectile';
+import { Seesaw } from '../entities/Seesaw';
+import { FanZone } from '../entities/FanZone';
+import { CrumblePlatform } from '../entities/CrumblePlatform';
+import { Bumper } from '../entities/Bumper';
 import { getLevelById, LEVELS } from '../levels';
-import type { LevelDef } from '../levels/types';
+import type { LadderDef, LevelDef } from '../levels/types';
 import { ZH, weaponLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { SaveSystem } from '../systems/SaveSystem';
@@ -31,6 +35,7 @@ export class GameScene extends Phaser.Scene {
   private keyA!: Phaser.Input.Keyboard.Key;
   private keyD!: Phaser.Input.Keyboard.Key;
   private keyW!: Phaser.Input.Keyboard.Key;
+  private keyS!: Phaser.Input.Keyboard.Key;
   private keySpace!: Phaser.Input.Keyboard.Key;
   private keyJ!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
@@ -41,6 +46,12 @@ export class GameScene extends Phaser.Scene {
   private runActive = true;
   private paused = false;
   private dying = false;
+  private ladders: LadderDef[] = [];
+  private seesaws: Seesaw[] = [];
+  private fans: FanZone[] = [];
+  private crumbles: CrumblePlatform[] = [];
+  private bumpers: Bumper[] = [];
+  private conveyors: { sprite: Phaser.Physics.Arcade.Sprite; dir: -1 | 1; speed: number }[] = [];
   private movingMeta: {
     sprite: Phaser.Physics.Arcade.Sprite;
     axis: 'x' | 'y';
@@ -61,6 +72,12 @@ export class GameScene extends Phaser.Scene {
     this.pickups = [];
     this.checkpointSprites = [];
     this.movingMeta = [];
+    this.ladders = [];
+    this.seesaws = [];
+    this.fans = [];
+    this.crumbles = [];
+    this.bumpers = [];
+    this.conveyors = [];
     this.runActive = true;
     this.paused = false;
     this.dying = false;
@@ -91,6 +108,12 @@ export class GameScene extends Phaser.Scene {
 
     this.buildPlatforms();
     this.buildMovingPlatforms();
+    this.buildLadders();
+    this.buildSeesaws();
+    this.buildConveyors();
+    this.buildFans();
+    this.buildCrumbles();
+    this.buildBumpers();
     this.buildSpikes();
     this.buildPads();
     this.buildCheckpoints();
@@ -99,13 +122,29 @@ export class GameScene extends Phaser.Scene {
     this.spawnEnemies();
     this.spawnWeapons();
 
-    this.physics.add.collider(this.player.sprite, this.platforms);
-    this.physics.add.collider(this.player.sprite, this.movingGroup);
+    // Climbing: skip solid floors so ladders can pass through platforms.
+    this.physics.add.collider(
+      this.player.sprite,
+      this.platforms,
+      undefined,
+      () => !this.player.climbing,
+      this,
+    );
+    this.physics.add.collider(
+      this.player.sprite,
+      this.movingGroup,
+      undefined,
+      () => !this.player.climbing,
+      this,
+    );
 
     this.physics.add.overlap(this.player.sprite, this.spikes, () => this.killPlayer());
     this.physics.add.overlap(this.player.sprite, this.pads, (_p, pad) => {
-      this.player.bounce();
       const s = pad as Phaser.Physics.Arcade.Sprite;
+      const now = this.time.now;
+      if (now < ((s.getData('cd') as number) || 0)) return;
+      s.setData('cd', now + 350);
+      this.player.bounce();
       this.tweens.add({ targets: s, scaleY: 0.7, yoyo: true, duration: 100 });
     });
     this.physics.add.overlap(this.player.sprite, this.finish, () => this.winLevel());
@@ -117,6 +156,12 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
     this.cameras.main.setDeadzone(80, 60);
+
+    // Support after Arcade step so seesaws feel solid.
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
+    });
 
     if (this.scene.isActive('UIScene') || this.scene.isSleeping('UIScene')) {
       this.scene.stop('UIScene');
@@ -133,12 +178,18 @@ export class GameScene extends Phaser.Scene {
     if (!this.runActive || this.paused || this.dying) return;
 
     this.elapsedMs += delta;
-    this.player.update(this.cursors, {
-      a: this.keyA,
-      d: this.keyD,
-      w: this.keyW,
-      space: this.keySpace,
-    });
+    const onLadder = this.isPlayerOnLadder();
+    this.player.update(
+      this.cursors,
+      {
+        a: this.keyA,
+        d: this.keyD,
+        w: this.keyW,
+        s: this.keyS,
+        space: this.keySpace,
+      },
+      onLadder,
+    );
 
     if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
       this.tryAttack();
@@ -149,9 +200,19 @@ export class GameScene extends Phaser.Scene {
 
     this.enemies.forEach((e) => e.update());
     this.updateMovingPlatforms(delta);
+    this.seesaws.forEach((s) => s.updateTilt(this.player, delta));
+    this.fans.forEach((f) => f.apply(this.player, delta));
+    this.crumbles.forEach((c) => c.update(this.player, delta));
+    this.bumpers.forEach((b) => b.tryHit(this.player));
+    this.applyConveyors();
     this.checkFallDeath();
     this.checkCheckpoints();
     this.events.emit('hud', this.getHudPayload());
+  }
+
+  private postUpdateSeesaws(): void {
+    if (!this.runActive || this.paused || this.dying || !this.player) return;
+    this.seesaws.forEach((s) => s.supportPlayer(this.player));
   }
 
   private setupInput(): void {
@@ -160,6 +221,7 @@ export class GameScene extends Phaser.Scene {
     this.keyA = kb.addKey(Phaser.Input.Keyboard.KeyCodes.A);
     this.keyD = kb.addKey(Phaser.Input.Keyboard.KeyCodes.D);
     this.keyW = kb.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+    this.keyS = kb.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this.keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyJ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.J);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
@@ -220,6 +282,81 @@ export class GameScene extends Phaser.Scene {
         dir: 1,
       });
     });
+  }
+
+  private buildLadders(): void {
+    this.ladders = this.level.ladders ?? [];
+    this.ladders.forEach((l) => {
+      const tile = this.add
+        .tileSprite(l.x + l.w / 2, l.y + l.h / 2, l.w, l.h, 'ladder')
+        .setDepth(4);
+      tile.setTint(0xffffff);
+    });
+  }
+
+  private buildSeesaws(): void {
+    (this.level.seesaws ?? []).forEach((def) => {
+      this.seesaws.push(new Seesaw(this, def));
+    });
+  }
+
+  private buildConveyors(): void {
+    (this.level.conveyors ?? []).forEach((c) => {
+      const sprite = this.platforms.create(
+        c.x + c.w / 2,
+        c.y + c.h / 2,
+        'conveyor',
+      ) as Phaser.Physics.Arcade.Sprite;
+      sprite.setDisplaySize(c.w, c.h);
+      sprite.setFlipX(c.dir < 0);
+      sprite.refreshBody();
+      this.conveyors.push({ sprite, dir: c.dir, speed: c.speed });
+    });
+  }
+
+  private buildFans(): void {
+    (this.level.fans ?? []).forEach((def) => {
+      this.fans.push(new FanZone(this, def));
+    });
+  }
+
+  private buildCrumbles(): void {
+    (this.level.crumbles ?? []).forEach((def) => {
+      this.crumbles.push(new CrumblePlatform(this, this.platforms, def));
+    });
+  }
+
+  private buildBumpers(): void {
+    (this.level.bumpers ?? []).forEach((def) => {
+      this.bumpers.push(new Bumper(this, def));
+    });
+  }
+
+  private applyConveyors(): void {
+    if (this.player.climbing) return;
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    if (!(body.blocked.down || body.touching.down)) return;
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y + 18;
+    for (const c of this.conveyors) {
+      const b = c.sprite.body as Phaser.Physics.Arcade.StaticBody;
+      if (px > b.left && px < b.right && py > b.top - 4 && py < b.bottom + 8) {
+        body.velocity.x += c.dir * c.speed * 0.08;
+      }
+    }
+  }
+
+  private isPlayerOnLadder(): boolean {
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    // Slightly padded so climbing through a floor doesn't instantly leave the ladder zone.
+    const pad = 6;
+    const bx = body.x - pad;
+    const by = body.y - pad;
+    const bw = body.width + pad * 2;
+    const bh = body.height + pad * 2;
+    return this.ladders.some(
+      (l) => bx < l.x + l.w && bx + bw > l.x && by < l.y + l.h && by + bh > l.y,
+    );
   }
 
   private updateMovingPlatforms(_delta: number): void {

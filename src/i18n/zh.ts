@@ -28,7 +28,7 @@ export const ZH = {
   rating: '评价',
   nextLevel: '下一关',
   playAgain: '再玩一次',
-  controls: '方向键或 A/D 移动，空格跳跃，J 攻击，P 暂停',
+  controls: 'A/D 移动，空格跳跃，W/↑↓ 爬梯，J 攻击；试试风扇/传送带/跷跷板！',
   gotGlove: '获得弹力拳套！',
   gotPeashooter: '获得弹珠枪！',
   checkpoint: '检查点已激活',

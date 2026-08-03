@@ -224,4 +224,122 @@ export function generateTextures(scene: Phaser.Scene): void {
     160,
     80,
   );
+
+  ensure(
+    scene,
+    'ladder',
+    (g) => {
+      g.fillStyle(THEME.woodDark, 1);
+      g.fillRect(4, 0, 6, 64);
+      g.fillRect(34, 0, 6, 64);
+      g.fillStyle(THEME.ladder, 1);
+      for (let i = 0; i < 5; i++) {
+        g.fillRoundedRect(4, 6 + i * 12, 36, 5, 2);
+      }
+    },
+    44,
+    64,
+  );
+
+  ensure(
+    scene,
+    'seesaw_plank',
+    (g) => {
+      g.fillStyle(THEME.wood, 1);
+      g.fillRoundedRect(0, 4, 128, 14, 5);
+      g.fillStyle(THEME.woodDark, 1);
+      g.fillRect(0, 14, 128, 4);
+      g.fillStyle(0xe8b86d, 0.5);
+      g.fillRoundedRect(8, 6, 40, 6, 3);
+    },
+    128,
+    22,
+  );
+
+  ensure(
+    scene,
+    'seesaw_fulcrum',
+    (g) => {
+      g.fillStyle(THEME.woodDark, 1);
+      g.fillTriangle(20, 4, 4, 28, 36, 28);
+      g.fillStyle(THEME.dirt, 1);
+      g.fillRect(8, 24, 24, 8);
+    },
+    40,
+    32,
+  );
+
+  ensure(
+    scene,
+    'conveyor',
+    (g) => {
+      g.fillStyle(0x5d6d7e, 1);
+      g.fillRoundedRect(0, 8, 64, 40, 4);
+      g.fillStyle(0xf5b041, 1);
+      g.fillRoundedRect(0, 0, 64, 14, 4);
+      g.fillStyle(0xd68910, 1);
+      for (let i = 0; i < 4; i++) g.fillTriangle(8 + i * 14, 3, 8 + i * 14, 11, 18 + i * 14, 7);
+    },
+    64,
+    48,
+  );
+
+  ensure(
+    scene,
+    'fan',
+    (g) => {
+      g.fillStyle(0x85929e, 1);
+      g.fillRoundedRect(8, 28, 40, 12, 4);
+      g.fillStyle(0x5dade2, 1);
+      g.fillCircle(28, 20, 16);
+      g.fillStyle(0xffffff, 0.85);
+      g.fillTriangle(28, 20, 28, 6, 40, 20);
+      g.fillTriangle(28, 20, 28, 34, 16, 20);
+    },
+    56,
+    40,
+  );
+
+  ensure(
+    scene,
+    'gust',
+    (g) => {
+      g.fillStyle(0xaed6f1, 0.9);
+      g.fillEllipse(12, 8, 20, 10);
+    },
+    24,
+    16,
+  );
+
+  ensure(
+    scene,
+    'crumble',
+    (g) => {
+      g.fillStyle(0xb9770e, 1);
+      g.fillRoundedRect(0, 8, 64, 40, 4);
+      g.fillStyle(0xd4ac0d, 1);
+      g.fillRoundedRect(0, 0, 64, 14, 5);
+      g.lineStyle(2, 0x6e2c00, 0.6);
+      g.lineBetween(12, 4, 20, 20);
+      g.lineBetween(36, 2, 44, 22);
+      g.lineBetween(50, 8, 58, 24);
+    },
+    64,
+    48,
+  );
+
+  ensure(
+    scene,
+    'bumper',
+    (g) => {
+      g.fillStyle(0xe74c3c, 1);
+      g.fillRoundedRect(4, 8, 28, 36, 10);
+      g.fillStyle(0xf5b7b1, 1);
+      g.fillRoundedRect(10, 14, 10, 24, 5);
+      g.fillStyle(0xffffff, 0.7);
+      g.fillCircle(30, 26, 6);
+    },
+    40,
+    52,
+  );
 }

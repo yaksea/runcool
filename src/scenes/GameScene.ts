@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { WeaponPickup } from '../entities/WeaponPickup';
-import { Projectile } from '../entities/Projectile';
+import { firePea, retirePhysicsSprite } from '../entities/Projectile';
 import { getLevelById, LEVELS } from '../levels';
 import type { LevelDef } from '../levels/types';
 import { ZH, weaponLabel } from '../i18n/zh';
@@ -111,7 +111,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player.sprite, this.finish, () => this.winLevel());
 
     this.physics.add.overlap(this.projectiles, this.platforms, (proj) => {
-      (proj as Phaser.Physics.Arcade.Sprite).destroy();
+      retirePhysicsSprite(proj as Phaser.Physics.Arcade.Sprite);
     });
 
     this.setupInput();
@@ -323,8 +323,9 @@ export class GameScene extends Phaser.Scene {
 
       this.physics.add.overlap(this.player.sprite, enemy.sprite, () => this.onTouchEnemy(enemy));
       this.physics.add.overlap(this.projectiles, enemy.sprite, (proj) => {
-        if (!enemy.sprite.active) return;
-        (proj as Phaser.Physics.Arcade.Sprite).destroy();
+        const pea = proj as Phaser.Physics.Arcade.Sprite;
+        if (enemy.dead || pea.getData('spent')) return;
+        retirePhysicsSprite(pea);
         enemy.takeHit(1, this.player.facing);
       });
     });
@@ -349,8 +350,7 @@ export class GameScene extends Phaser.Scene {
     const py = this.player.sprite.y;
 
     if (this.player.weapon === 'peashooter') {
-      const pea = new Projectile(this, px, py, this.player.facing);
-      this.projectiles.add(pea.sprite);
+      firePea(this, this.projectiles, px, py, this.player.facing);
       return;
     }
 
@@ -380,7 +380,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onTouchEnemy(enemy: Enemy): void {
-    if (!enemy.sprite.active || !this.runActive || this.dying) return;
+    if (enemy.dead || !enemy.sprite.active || !this.runActive || this.dying) return;
     const now = this.time.now;
     if (this.player.isInvincible(now)) return;
     this.killPlayer();

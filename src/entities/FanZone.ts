@@ -4,15 +4,19 @@ import type { Player } from './Player';
 
 /** Updraft column — lifts the player while inside. */
 export class FanZone {
+  readonly id?: string;
   private readonly zone: Phaser.GameObjects.Zone;
   private readonly visuals: Phaser.GameObjects.Image[] = [];
+  private readonly fanImg: Phaser.GameObjects.Image;
   private readonly force: number;
   private readonly x: number;
   private readonly y: number;
   private readonly w: number;
   private readonly h: number;
+  private enabled = true;
 
   constructor(scene: Phaser.Scene, def: FanDef) {
+    this.id = def.id;
     this.force = def.force;
     this.x = def.x;
     this.y = def.y;
@@ -20,7 +24,7 @@ export class FanZone {
     this.h = def.h;
 
     this.zone = scene.add.zone(def.x + def.w / 2, def.y + def.h / 2, def.w, def.h).setDepth(3);
-    scene.add.image(def.x + def.w / 2, def.y + def.h - 10, 'fan').setDepth(4).setScale(1.1);
+    this.fanImg = scene.add.image(def.x + def.w / 2, def.y + def.h - 10, 'fan').setDepth(4).setScale(1.1);
 
     for (let i = 0; i < 4; i++) {
       const gust = scene.add
@@ -39,8 +43,15 @@ export class FanZone {
     }
   }
 
+  toggle(): void {
+    this.enabled = !this.enabled;
+    this.fanImg.setAlpha(this.enabled ? 1 : 0.35);
+    this.fanImg.setTint(this.enabled ? 0xffffff : 0x777777);
+    this.visuals.forEach((v) => v.setVisible(this.enabled));
+  }
+
   apply(player: Player, delta: number): void {
-    if (player.climbing) return;
+    if (!this.enabled || player.climbing) return;
     const b = player.sprite.body as Phaser.Physics.Arcade.Body;
     const cx = b.center.x;
     const cy = b.center.y;

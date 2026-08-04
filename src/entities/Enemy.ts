@@ -1,121 +1,359 @@
 import Phaser from 'phaser';
-import type { EnemyDef } from '../levels/types';
+import type { EnemyDef, EnemyType } from '../levels/types';
 import type { Player } from './Player';
 
-function hpFor(type: EnemyDef['type']): number {
+export type EnemyFireHazard = (x: number, y: number, dir: number) => void;
+
+const HP_BAR_W = 48;
+const HP_BAR_H = 8;
+
+/** How many weapon hits to kill. One weapon connect = exactly 1 hit. */
+function hitsFor(type: EnemyType): number {
   switch (type) {
     case 'tank':
-      return 4;
+      return 8;
+    case 'ghost':
+    case 'spitter':
+      return 7;
     case 'spikeball':
     case 'hopper':
     case 'chaser':
-      return 2;
+    case 'roller':
+      return 6;
+    case 'bat':
+    case 'floater':
+    case 'slime':
     default:
-      return 1;
+      return 5;
   }
 }
 
 export class Enemy {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
-  readonly type: EnemyDef['type'];
+  readonly type: EnemyType;
   readonly afterCheckpoint: number;
-  hp: number;
+  readonly spawnDef: EnemyDef;
+  /** Remaining weapon hits before death. */
+  hitsLeft: number;
+  readonly maxHits: number;
   dead = false;
+
   private readonly originX: number;
   private readonly patrol: number;
   private dir = 1;
   private readonly baseY: number;
   private hopCooldown = 0;
+  private spitCooldown = 0;
+  private phase = Math.random() * Math.PI * 2;
+  private readonly hpBg: Phaser.GameObjects.Rectangle;
+  private readonly hpFill: Phaser.GameObjects.Rectangle;
+  private readonly fireHazard?: EnemyFireHazard;
+  private wobbleTween?: Phaser.Tweens.Tween;
+  private hurtUntil = 0;
+  private stompImmuneUntil = 0;
 
-  constructor(scene: Phaser.Scene, def: EnemyDef) {
+  constructor(scene: Phaser.Scene, def: EnemyDef, fireHazard?: EnemyFireHazard) {
     this.type = def.type;
     this.afterCheckpoint = def.afterCheckpoint ?? -1;
+    this.spawnDef = def;
     this.originX = def.x;
     this.patrol = def.patrol;
     this.baseY = def.y;
-    this.hp = hpFor(def.type);
+    this.maxHits = hitsFor(def.type);
+    this.hitsLeft = this.maxHits;
+    this.fireHazard = fireHazard;
 
     this.sprite = scene.physics.add.sprite(def.x, def.y, def.type);
     this.sprite.setDepth(8);
     this.sprite.setData('enemy', this);
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
-    if (def.type === 'floater') {
+    if (def.type === 'floater' || def.type === 'bat' || def.type === 'ghost') {
       body.setAllowGravity(false);
-      body.setSize(28, 20);
-    } else if (def.type === 'spikeball') {
+      // Bat needs a generous box — fast peas otherwise tunnel through.
+      if (def.type === 'bat') body.setSize(34, 28);
+      else if (def.type === 'ghost') body.setSize(30, 30);
+      else body.setSize(30, 24);
+    } else if (def.type === 'spikeball' || def.type === 'roller') {
       body.setAllowGravity(true);
       body.setSize(26, 26);
     } else if (def.type === 'tank') {
       body.setAllowGravity(true);
       body.setSize(34, 30);
       body.setOffset(4, 6);
+    } else if (def.type === 'spitter') {
+      body.setAllowGravity(true);
+      body.setSize(30, 28);
+      body.setOffset(5, 6);
     } else {
       body.setAllowGravity(true);
       body.setSize(30, 26);
       body.setOffset(5, 8);
     }
+
+    this.hpBg = scene.add
+      .rectangle(def.x, def.y - 28, HP_BAR_W, HP_BAR_H, 0x111111, 0.9)
+      .setStrokeStyle(1, 0xffffff, 0.45)
+      .setDepth(12);
+    this.hpFill = scene.add
+      .rectangle(def.x - HP_BAR_W / 2, def.y - 28, HP_BAR_W - 4, HP_BAR_H - 2, 0x2ecc71, 1)
+      .setOrigin(0, 0.5)
+      .setDepth(13);
+    this.refreshHpBar();
+
+    this.wobbleTween = scene.tweens.add({
+      targets: this.sprite,
+      scaleY: { from: 0.94, to: 1.06 },
+      scaleX: { from: 1.04, to: 0.96 },
+      duration: 380 + Math.random() * 220,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  get canBeStomped(): boolean {
+    return this.type !== 'spikeball';
   }
 
   get lethalOnTouch(): boolean {
     return this.type === 'spikeball';
   }
 
+  isStompImmune(now: number): boolean {
+    return now < this.stompImmuneUntil;
+  }
+
+  /** @deprecated use hitsLeft/maxHits — kept so HUD math stays simple */
+  get hp(): number {
+    return this.hitsLeft;
+  }
+
+  get maxHp(): number {
+    return this.maxHits;
+  }
+
   update(player?: Player): void {
-    if (this.dead || !this.sprite.active) return;
+    if (this.dead || !this.sprite.active) {
+      this.hpBg.setVisible(false);
+      this.hpFill.setVisible(false);
+      return;
+    }
+
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    const now = this.sprite.scene.time.now;
+    this.phase += 0.05;
 
     if (this.type === 'floater') {
-      this.sprite.y = this.baseY + Math.sin(this.sprite.scene.time.now / 280) * 8;
-      this.sprite.x += this.dir * 0.75;
-      if (this.sprite.x > this.originX + this.patrol) this.dir = -1;
-      if (this.sprite.x < this.originX - this.patrol) this.dir = 1;
+      let x = this.sprite.x + this.dir * 0.85;
+      const y = this.baseY + Math.sin(now / 260 + this.phase) * 10;
+      if (x > this.originX + this.patrol) this.dir = -1;
+      if (x < this.originX - this.patrol) this.dir = 1;
+      x = this.sprite.x + this.dir * 0.85;
+      this.placeFlying(x, y);
       this.sprite.setFlipX(this.dir < 0);
+      this.syncHpBar();
+      return;
+    }
+
+    if (this.type === 'bat') {
+      const t = now / 220 + this.phase;
+      let x = this.originX + Math.sin(t) * this.patrol;
+      let y = this.baseY + Math.sin(t * 2) * 18;
+      if (player && !player.climbing) {
+        const dx = player.sprite.x - x;
+        const dy = player.sprite.y - y;
+        if (Math.hypot(dx, dy) < 160) {
+          x += Math.sign(dx) * 1.1;
+          y += Math.sign(dy) * 0.7;
+        }
+        this.dir = dx >= 0 ? 1 : -1;
+      }
+      this.placeFlying(x, y);
+      this.sprite.setFlipX(this.dir < 0);
+      this.sprite.rotation = Math.sin(t * 3) * 0.15;
+      this.syncHpBar();
+      return;
+    }
+
+    if (this.type === 'ghost') {
+      const t = now / 300 + this.phase;
+      this.sprite.setAlpha(0.45 + Math.sin(t) * 0.25);
+      let x = this.sprite.x;
+      let y = this.sprite.y;
+      if (player && !player.climbing) {
+        const dx = player.sprite.x - x;
+        const dy = player.sprite.y - y;
+        if (Math.hypot(dx, dy) < 260) {
+          x += Math.sign(dx || 1) * 0.9;
+          y += Math.sign(dy || 1) * 0.55;
+          this.dir = dx >= 0 ? 1 : -1;
+        }
+      } else {
+        x = this.originX + Math.sin(t) * 12;
+        y = this.baseY + Math.cos(t) * 12;
+      }
+      this.placeFlying(x, y);
+      this.sprite.setFlipX(this.dir < 0);
+      this.syncHpBar();
       return;
     }
 
     if (this.type === 'chaser' && player && !player.climbing) {
       const dx = player.sprite.x - this.sprite.x;
-      if (Math.abs(dx) < 280) this.dir = dx >= 0 ? 1 : -1;
+      if (Math.abs(dx) < 300) this.dir = dx >= 0 ? 1 : -1;
     }
 
     if (this.type === 'hopper') {
       this.hopCooldown -= 16;
       const onGround = body.blocked.down || body.touching.down;
       if (onGround && this.hopCooldown <= 0) {
-        body.setVelocityY(-420);
-        this.hopCooldown = 900;
+        body.setVelocityY(-440 - Math.random() * 40);
+        this.hopCooldown = 720 + Math.random() * 280;
+        this.sprite.setScale(1.15, 0.85);
+        this.sprite.scene.tweens.add({
+          targets: this.sprite,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 120,
+        });
       }
-      body.setVelocityX(this.dir * 70);
-    } else {
-      const speed = this.type === 'tank' ? 28 : this.type === 'spikeball' ? 55 : this.type === 'chaser' ? 95 : 42;
+      body.setVelocityX(this.dir * (75 + Math.sin(this.phase) * 8));
+    } else if (this.type === 'roller') {
+      const speed = 120;
       body.setVelocityX(this.dir * speed);
+      this.sprite.rotation += this.dir * 0.12;
+      if (body.blocked.left) this.dir = 1;
+      if (body.blocked.right) this.dir = -1;
+    } else if (this.type === 'spitter') {
+      body.setVelocityX(this.dir * 22);
+      this.spitCooldown -= 16;
+      if (player && this.spitCooldown <= 0 && this.fireHazard) {
+        const dx = player.sprite.x - this.sprite.x;
+        if (Math.abs(dx) < 340 && Math.abs(player.sprite.y - this.sprite.y) < 90) {
+          this.dir = dx >= 0 ? 1 : -1;
+          this.fireHazard(this.sprite.x + this.dir * 18, this.sprite.y - 4, this.dir);
+          this.spitCooldown = 1400;
+          this.sprite.setTint(0xffeaa7);
+          this.sprite.scene.time.delayedCall(90, () => {
+            if (!this.dead && this.sprite.active) this.sprite.clearTint();
+          });
+        }
+      }
+    } else {
+      const speed =
+        this.type === 'tank'
+          ? 30
+          : this.type === 'spikeball'
+            ? 60
+            : this.type === 'chaser'
+              ? 100
+              : 46;
+      body.setVelocityX(this.dir * (speed + Math.sin(this.phase * 2) * 4));
     }
 
-    if (this.sprite.x > this.originX + this.patrol) this.dir = -1;
-    if (this.sprite.x < this.originX - this.patrol) this.dir = 1;
-    this.sprite.setFlipX(this.dir < 0);
+    if (this.type !== 'roller') {
+      if (this.sprite.x > this.originX + this.patrol) this.dir = -1;
+      if (this.sprite.x < this.originX - this.patrol) this.dir = 1;
+      this.sprite.setFlipX(this.dir < 0);
+    }
 
     if (this.type === 'spikeball') {
-      this.sprite.rotation += this.dir * 0.04;
+      this.sprite.rotation += this.dir * 0.05;
     }
+
+    if (this.type === 'slime') {
+      this.sprite.scaleY = 0.92 + Math.sin(now / 180 + this.phase) * 0.1;
+      this.sprite.scaleX = 1.08 - Math.sin(now / 180 + this.phase) * 0.1;
+    }
+
+    this.syncHpBar();
   }
 
-  takeHit(damage: number, knockDir: number): boolean {
-    if (this.dead || !this.sprite.active) return false;
+  /** Keep Arcade body glued to sprite after manual flight movement. */
+  private placeFlying(x: number, y: number): void {
+    this.sprite.setPosition(x, y);
+    const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    body.reset(x, y);
+    body.setVelocity(0, 0);
+    body.setAllowGravity(false);
+  }
 
-    this.hp -= damage;
-    this.sprite.setVelocityX(knockDir * 200);
-    this.sprite.setTint(0xffffff);
+  /**
+   * One successful weapon connect removes exactly 1 hit.
+   * Hard rule: never remove more than 1 per call; i-frames block multi-pellet.
+   */
+  takeWeaponHit(knockDir: number): boolean {
+    if (this.dead || !this.sprite.active) return false;
+    const now = this.sprite.scene.time.now;
+    if (now < this.hurtUntil) return false;
+
+    this.hurtUntil = now + 280;
+    this.stompImmuneUntil = now + 700;
+
+    this.hitsLeft = Math.max(0, this.hitsLeft - 1);
+    this.refreshHpBar();
+    this.syncHpBar();
+    this.spawnDamageFloat();
+
+    this.hpFill.setFillStyle(0xffffff);
     this.sprite.scene.time.delayedCall(80, () => {
+      if (!this.dead) this.refreshHpBar();
+    });
+
+    this.sprite.setVelocityX(knockDir * 140);
+    if (this.type !== 'floater' && this.type !== 'bat' && this.type !== 'ghost') {
+      this.sprite.setVelocityY(-70);
+    }
+    this.sprite.setTint(0xffffff);
+    this.sprite.scene.time.delayedCall(100, () => {
       if (!this.dead && this.sprite.active) this.sprite.clearTint();
     });
 
-    if (this.hp <= 0) {
+    if (this.hitsLeft <= 0) {
       this.die();
       return true;
     }
     return false;
+  }
+
+  /** @deprecated alias — old call sites */
+  takeHitRatio(_ratio: number, knockDir: number): boolean {
+    return this.takeWeaponHit(knockDir);
+  }
+
+  /** One-hit stomp kill — only for deliberate landings, never after gunfire. */
+  stomp(): void {
+    if (this.dead || !this.canBeStomped) return;
+    const now = this.sprite.scene.time.now;
+    if (now < this.stompImmuneUntil) return;
+    // Extra guard: if we were just shot, refuse stomp (jump+shoot false OHKO).
+    if (now < this.hurtUntil) return;
+    this.hitsLeft = 0;
+    this.refreshHpBar();
+    this.die();
+  }
+
+  private spawnDamageFloat(): void {
+    const scene = this.sprite.scene;
+    const t = scene.add
+      .text(this.sprite.x, this.sprite.y - 36, `${this.hitsLeft}/${this.maxHits}`, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#ffffff',
+        stroke: '#1a1a1a',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(20);
+    scene.tweens.add({
+      targets: t,
+      y: t.y - 26,
+      alpha: 0,
+      duration: 480,
+      ease: 'Quad.easeOut',
+      onComplete: () => t.destroy(),
+    });
   }
 
   private die(): void {
@@ -126,21 +364,49 @@ export class Enemy {
       body.enable = false;
       body.stop();
     }
+    this.hpBg.setVisible(false);
+    this.hpFill.setVisible(false);
+    this.wobbleTween?.stop();
+
     const scene = this.sprite.scene;
     scene.tweens.add({
       targets: this.sprite,
-      scaleX: 0.1,
-      scaleY: 0.1,
+      scaleX: 1.3,
+      scaleY: 0.15,
       alpha: 0,
-      duration: 180,
+      duration: 200,
       onComplete: () => {
         if (this.sprite.active) this.sprite.destroy();
+        this.hpBg.destroy();
+        this.hpFill.destroy();
       },
     });
   }
 
+  private refreshHpBar(): void {
+    const ratio = Phaser.Math.Clamp(this.hitsLeft / this.maxHits, 0, 1);
+    this.hpFill.setScale(Math.max(0.001, ratio), 1);
+    this.hpFill.setFillStyle(ratio > 0.55 ? 0x2ecc71 : ratio > 0.3 ? 0xf1c40f : 0xe74c3c);
+    const show = !this.dead;
+    this.hpBg.setVisible(show);
+    this.hpFill.setVisible(show && this.hitsLeft > 0);
+  }
+
+  private syncHpBar(): void {
+    const x = this.sprite.x;
+    const y = this.sprite.y - this.sprite.displayHeight * 0.55 - 12;
+    this.hpBg.setPosition(x, y);
+    this.hpFill.setPosition(x - HP_BAR_W / 2 + 2, y);
+    const show = !this.dead;
+    this.hpBg.setVisible(show);
+    this.hpFill.setVisible(show && this.hitsLeft > 0);
+  }
+
   destroy(): void {
     this.dead = true;
-    this.sprite.destroy();
+    this.wobbleTween?.stop();
+    if (this.hpBg.active) this.hpBg.destroy();
+    if (this.hpFill.active) this.hpFill.destroy();
+    if (this.sprite.active) this.sprite.destroy();
   }
 }

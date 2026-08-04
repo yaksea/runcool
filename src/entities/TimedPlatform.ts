@@ -9,13 +9,18 @@ export class TimedPlatform {
   private sprite: Phaser.Physics.Arcade.Sprite | null = null;
   private on: boolean;
   private nextToggle: number;
+  private readonly onMs: number;
+  private readonly offMs: number;
 
   constructor(scene: Phaser.Scene, group: Phaser.Physics.Arcade.StaticGroup, def: TimedPlatformDef) {
     this.scene = scene;
     this.def = def;
     this.group = group;
+    // Faster blink cycle.
+    this.onMs = Math.round(def.onMs * 0.65);
+    this.offMs = Math.round(def.offMs * 0.65);
     this.on = def.startOn !== false;
-    this.nextToggle = scene.time.now + (this.on ? def.onMs : def.offMs);
+    this.nextToggle = scene.time.now + (this.on ? this.onMs : this.offMs);
     if (this.on) this.spawn();
   }
 
@@ -25,13 +30,13 @@ export class TimedPlatform {
       if (this.on && this.sprite) {
         // Blink warn near end of on-phase
         const left = this.nextToggle - now;
-        if (left < 400) this.sprite.setAlpha(0.45 + 0.55 * Math.abs(Math.sin(now / 40)));
+        if (left < 280) this.sprite.setAlpha(0.45 + 0.55 * Math.abs(Math.sin(now / 40)));
       }
       return;
     }
 
     this.on = !this.on;
-    this.nextToggle = now + (this.on ? this.def.onMs : this.def.offMs);
+    this.nextToggle = now + (this.on ? this.onMs : this.offMs);
     if (this.on) this.spawn();
     else this.despawn();
   }

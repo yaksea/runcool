@@ -19,8 +19,9 @@ export class CrumblePlatform {
     this.scene = scene;
     this.def = def;
     this.group = group;
-    this.shakeMs = def.shakeMs ?? 450;
-    this.goneMs = def.goneMs ?? 1800;
+    // Faster cycle so platforms feel lively.
+    this.shakeMs = Math.round((def.shakeMs ?? 450) * 0.55);
+    this.goneMs = Math.round((def.goneMs ?? 1800) * 0.45);
     this.sprite = this.spawnSprite();
   }
 

@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
 import { WeaponPickup } from '../entities/WeaponPickup';
-import { fireProjectile, retirePhysicsSprite } from '../entities/Projectile';
+import { CoinPickup } from '../entities/CoinPickup';
+import { fireProjectile, retirePhysicsSprite, segmentHitsBody } from '../entities/Projectile';
 import { Seesaw } from '../entities/Seesaw';
 import { FanZone } from '../entities/FanZone';
 import { CrumblePlatform } from '../entities/CrumblePlatform';
@@ -10,12 +11,15 @@ import { Bumper } from '../entities/Bumper';
 import { PortalPairSystem } from '../entities/Portal';
 import { Geyser } from '../entities/Geyser';
 import { TimedPlatform } from '../entities/TimedPlatform';
+import { InteractSystem } from '../entities/Interactables';
 import { getLevelById, LEVELS } from '../levels';
 import type { LadderDef, LevelDef } from '../levels/types';
-import { ZH, weaponLabel, weaponPickupToast } from '../i18n/zh';
+import { ZH, skillLabel, weaponLabel, weaponPickupToast } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { WEAPON_STATS } from '../game/weapons';
+import { shapeById, skillById, skinById } from '../game/shopCatalog';
 import { SaveSystem, type WeaponType } from '../systems/SaveSystem';
+import { SoundSystem } from '../systems/SoundSystem';
 
 export type GameSceneData = {
   levelId: string;
@@ -32,7 +36,9 @@ export class GameScene extends Phaser.Scene {
   private finish!: Phaser.Physics.Arcade.Sprite;
   private enemies: Enemy[] = [];
   private pickups: WeaponPickup[] = [];
+  private coins: CoinPickup[] = [];
   private projectiles!: Phaser.Physics.Arcade.Group;
+  private hazardProjectiles!: Phaser.Physics.Arcade.Group;
   private checkpointSprites: Phaser.GameObjects.Sprite[] = [];
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -42,8 +48,14 @@ export class GameScene extends Phaser.Scene {
   private keyS!: Phaser.Input.Keyboard.Key;
   private keySpace!: Phaser.Input.Keyboard.Key;
   private keyJ!: Phaser.Input.Keyboard.Key;
+  private keyK!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
+  private keyX!: Phaser.Input.Keyboard.Key;
+  private skillReadyAt = 0;
+  /** After firing a gun, suppress stomp so jump+shoot is not mistaken for OHKO. */
+  private stompSuppressUntil = 0;
+  private enemiesGroup!: Phaser.GameObjects.Group;
 
   private checkpointIndex = -1;
   private elapsedMs = 0;
@@ -60,7 +72,9 @@ export class GameScene extends Phaser.Scene {
   private portals: PortalPairSystem | null = null;
   private geysers: Geyser[] = [];
   private timedPlatforms: TimedPlatform[] = [];
+  private interact!: InteractSystem;
   private conveyors: {
+    id?: string;
     sprite: Phaser.Physics.Arcade.Sprite;
     dir: -1 | 1;
     speed: number;
@@ -87,6 +101,7 @@ export class GameScene extends Phaser.Scene {
     this.level = level;
     this.enemies = [];
     this.pickups = [];
+    this.coins = [];
     this.checkpointSprites = [];
     this.movingMeta = [];
     this.ladders = [];
@@ -98,10 +113,13 @@ export class GameScene extends Phaser.Scene {
     this.geysers = [];
     this.timedPlatforms = [];
     this.conveyors = [];
+    this.checkpointFloorIds = null;
     this.runActive = true;
     this.paused = false;
     this.inventoryOpen = false;
     this.dying = false;
+    this.skillReadyAt = 0;
+    this.stompSuppressUntil = 0;
 
     const save = SaveSystem.load();
     if (data.continueRun && save.activeRun?.levelId === level.id) {
@@ -126,6 +144,9 @@ export class GameScene extends Phaser.Scene {
     this.pads = this.physics.add.staticGroup();
     this.movingGroup = this.physics.add.group({ allowGravity: false, immovable: true });
     this.projectiles = this.physics.add.group();
+    this.hazardProjectiles = this.physics.add.group();
+    // Plain group so we don't rewrite enemy body flags when adding sprites.
+    this.enemiesGroup = this.add.group();
 
     this.buildPlatforms();
     this.buildMovingPlatforms();
@@ -138,6 +159,7 @@ export class GameScene extends Phaser.Scene {
     this.buildPortals();
     this.buildGeysers();
     this.buildTimedPlatforms();
+    this.buildInteractables();
     this.buildSpikes();
     this.buildPads();
     this.buildCheckpoints();
@@ -145,7 +167,16 @@ export class GameScene extends Phaser.Scene {
     this.spawnPlayer();
     this.spawnEnemies();
     this.spawnWeapons();
+    this.spawnCoins();
     this.portals?.suppress(1500);
+
+    this.physics.add.overlap(this.player.sprite, this.hazardProjectiles, (_p, shot) => {
+      retirePhysicsSprite(shot as Phaser.Physics.Arcade.Sprite);
+      this.hurtPlayer();
+    });
+    this.physics.add.overlap(this.hazardProjectiles, this.platforms, (proj) => {
+      retirePhysicsSprite(proj as Phaser.Physics.Arcade.Sprite);
+    });
 
     // Climbing: skip solid floors so ladders can pass through platforms.
     this.physics.add.collider(
@@ -163,7 +194,7 @@ export class GameScene extends Phaser.Scene {
       this,
     );
 
-    this.physics.add.overlap(this.player.sprite, this.spikes, () => this.killPlayer());
+    this.physics.add.overlap(this.player.sprite, this.spikes, () => this.hurtPlayer());
     this.physics.add.overlap(this.player.sprite, this.pads, (_p, pad) => {
       const s = pad as Phaser.Physics.Arcade.Sprite;
       const now = this.time.now;
@@ -177,8 +208,18 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.projectiles, this.platforms, (proj) => {
       retirePhysicsSprite(proj as Phaser.Physics.Arcade.Sprite);
     });
+    // One shared handler — each pea can only damage once.
+    this.physics.add.overlap(this.projectiles, this.enemiesGroup, (proj, enemyObj) => {
+      this.onProjectileHitEnemy(
+        proj as Phaser.Physics.Arcade.Sprite,
+        enemyObj as Phaser.Physics.Arcade.Sprite,
+      );
+    });
 
     this.setupInput();
+    // Unlock WebAudio after first gesture (autoplay policy).
+    this.input.once('pointerdown', () => SoundSystem.unlock());
+    this.input.keyboard?.once('keydown', () => SoundSystem.unlock());
     this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
     this.cameras.main.setDeadzone(80, 60);
 
@@ -210,6 +251,14 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.runActive || this.paused || this.inventoryOpen || this.dying) return;
 
+    // Attack first so stomp suppression is active before contact checks feel "gun OHKO".
+    if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
+      this.tryAttack();
+    }
+    if (this.keyJ.isDown) {
+      this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 120);
+    }
+
     this.elapsedMs += delta;
     const onLadder = this.isPlayerOnLadder();
     this.player.update(
@@ -224,11 +273,20 @@ export class GameScene extends Phaser.Scene {
       onLadder,
     );
 
-    if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
-      this.tryAttack();
+    if (Phaser.Input.Keyboard.JustDown(this.keyK)) {
+      this.tryUseSkill();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
+      this.tryInteract();
     }
 
+    const hint = this.interact?.nearestHint(this.player) ?? null;
+    this.events.emit('interactHint', hint?.hint ?? '');
+
     this.enemies.forEach((e) => e.update(this.player));
+    this.player.tickVitals(delta);
+    // After flyers sync their bodies, sweep fast shots so peas can't tunnel through bats.
+    this.sweepPlayerProjectiles();
     this.updateMovingPlatforms(delta);
     this.seesaws.forEach((s) => s.updateTilt(this.player, delta));
     this.fans.forEach((f) => f.apply(this.player, delta));
@@ -257,29 +315,158 @@ export class GameScene extends Phaser.Scene {
     this.keyS = kb.addKey(Phaser.Input.Keyboard.KeyCodes.S);
     this.keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyJ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.J);
+    this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+    this.keyX = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
   }
 
   private drawParallax(): void {
-    const g = this.add.graphics();
-    g.fillGradientStyle(THEME.skyTop, THEME.skyTop, THEME.skyBottom, THEME.skyBottom, 1);
-    g.fillRect(0, 0, this.level.worldWidth, this.level.worldHeight);
+    const w = this.level.worldWidth;
+    const h = this.level.worldHeight;
 
-    for (let i = 0; i < 10; i++) {
+    const sky = this.add.graphics().setScrollFactor(0);
+    sky.fillGradientStyle(0x6eb6e0, 0x6eb6e0, THEME.skyBottom, 0xb8efd4, 1);
+    sky.fillRect(0, 0, THEME.width, THEME.height);
+
+    // Soft sun glow (camera-fixed)
+    const sun = this.add.image(THEME.width - 120, 90, 'sun').setScrollFactor(0).setDepth(-20).setAlpha(0.9);
+    this.tweens.add({
+      targets: sun,
+      scale: { from: 1, to: 1.08 },
+      alpha: { from: 0.85, to: 1 },
+      duration: 2800,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    // Far mountains
+    const mountainCount = Math.ceil(w / 280) + 2;
+    for (let i = 0; i < mountainCount; i++) {
       this.add
-        .image(200 + i * 380, 100 + (i % 3) * 40, 'cloud')
-        .setScrollFactor(0.2)
-        .setAlpha(0.75)
-        .setScale(1 + (i % 3) * 0.2);
-    }
-    for (let i = 0; i < 8; i++) {
-      this.add
-        .image(150 + i * 520, this.level.worldHeight - 80, 'hill')
-        .setScrollFactor(0.35)
+        .image(i * 280 + (i % 2) * 40, h * 0.42, 'mountain')
+        .setScrollFactor(0.12)
         .setOrigin(0.5, 1)
-        .setScale(1.5 + (i % 2) * 0.4)
-        .setAlpha(0.7);
+        .setScale(1.1 + (i % 3) * 0.25)
+        .setAlpha(0.55)
+        .setTint(i % 2 === 0 ? 0xffffff : 0xd5e4f0)
+        .setDepth(-15);
+    }
+
+    // Drifting clouds
+    const cloudCount = Math.ceil(w / 320) + 3;
+    for (let i = 0; i < cloudCount; i++) {
+      const cloud = this.add
+        .image(120 + i * 340, 70 + (i % 4) * 36, 'cloud')
+        .setScrollFactor(0.18)
+        .setAlpha(0.7 + (i % 3) * 0.08)
+        .setScale(0.9 + (i % 3) * 0.35)
+        .setDepth(-14);
+      this.tweens.add({
+        targets: cloud,
+        x: cloud.x + 90 + (i % 3) * 40,
+        duration: 9000 + i * 700,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
+
+    // Mid hills
+    const hillCount = Math.ceil(w / 400) + 2;
+    for (let i = 0; i < hillCount; i++) {
+      this.add
+        .image(80 + i * 420, h - 40, 'hill')
+        .setScrollFactor(0.32)
+        .setOrigin(0.5, 1)
+        .setScale(1.4 + (i % 2) * 0.5)
+        .setAlpha(0.75)
+        .setDepth(-10);
+    }
+
+    // Trees / bushes along the mid-ground
+    for (let i = 0; i < Math.ceil(w / 260); i++) {
+      const x = 60 + i * 260 + (i % 3) * 30;
+      if (i % 2 === 0) {
+        this.add
+          .image(x, h - 70, 'tree')
+          .setScrollFactor(0.45)
+          .setOrigin(0.5, 1)
+          .setScale(0.85 + (i % 3) * 0.2)
+          .setDepth(-8)
+          .setAlpha(0.9);
+      } else {
+        this.add
+          .image(x, h - 55, 'bush')
+          .setScrollFactor(0.5)
+          .setOrigin(0.5, 1)
+          .setScale(1 + (i % 2) * 0.25)
+          .setDepth(-7);
+      }
+    }
+
+    // Near grass tufts
+    for (let i = 0; i < Math.ceil(w / 90); i++) {
+      this.add
+        .image(20 + i * 90 + (i % 5) * 8, h - 18, 'grass_tuft')
+        .setScrollFactor(0.7)
+        .setOrigin(0.5, 1)
+        .setScale(0.8 + (i % 3) * 0.25)
+        .setDepth(-3)
+        .setAlpha(0.85);
+    }
+
+    // Birds looping across the sky
+    for (let i = 0; i < 4; i++) {
+      const bird = this.add
+        .image(100 + i * 400, 110 + i * 28, 'bird')
+        .setScrollFactor(0.22)
+        .setAlpha(0.7)
+        .setDepth(-13)
+        .setScale(1.2);
+      this.tweens.add({
+        targets: bird,
+        x: bird.x + w * 0.35,
+        y: bird.y + (i % 2 === 0 ? 18 : -14),
+        duration: 14000 + i * 1200,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+        onRepeat: () => {
+          bird.x = -40 + i * 60;
+        },
+      });
+      this.tweens.add({
+        targets: bird,
+        scaleY: { from: 1.1, to: 0.85 },
+        duration: 320,
+        yoyo: true,
+        repeat: -1,
+      });
+    }
+
+    // Floating pollen / dust
+    for (let i = 0; i < 18; i++) {
+      const mote = this.add
+        .circle(
+          Phaser.Math.Between(40, w - 40),
+          Phaser.Math.Between(40, h - 80),
+          Phaser.Math.Between(2, 4),
+          0xffffff,
+          0.35,
+        )
+        .setScrollFactor(0.55)
+        .setDepth(-2);
+      this.tweens.add({
+        targets: mote,
+        y: mote.y - Phaser.Math.Between(30, 70),
+        x: mote.x + Phaser.Math.Between(-40, 40),
+        alpha: { from: 0.15, to: 0.45 },
+        duration: 2200 + i * 120,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
     }
   }
 
@@ -321,10 +508,11 @@ export class GameScene extends Phaser.Scene {
   private buildLadders(): void {
     this.ladders = this.level.ladders ?? [];
     this.ladders.forEach((l) => {
-      const tile = this.add
-        .tileSprite(l.x + l.w / 2, l.y + l.h / 2, l.w, l.h, 'ladder')
-        .setDepth(4);
-      tile.setTint(0xffffff);
+      // Texture is 40px wide with thick edge rails — never draw narrower or rails get clipped.
+      const visualW = Math.max(40, l.w);
+      const cx = l.x + l.w / 2;
+      const cy = l.y + l.h / 2;
+      this.add.tileSprite(cx, cy, visualW, l.h, 'ladder').setDepth(4);
     });
   }
 
@@ -345,6 +533,7 @@ export class GameScene extends Phaser.Scene {
       sprite.setFlipX(c.dir < 0);
       sprite.refreshBody();
       this.conveyors.push({
+        id: c.id,
         sprite,
         dir: c.dir,
         speed: c.speed,
@@ -356,36 +545,127 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private checkpointFloorIds: Set<string> | null = null;
+
+  /** Resolve which solid floor a point rests on (platforms / conveyors). */
+  private floorIdAt(x: number, y: number): string | null {
+    const floors: { id: string; x: number; y: number; w: number; h: number }[] = [
+      ...this.level.platforms.map((p, i) => ({ id: `p${i}`, ...p })),
+      ...(this.level.conveyors ?? []).map((p, i) => ({ id: `c${i}`, ...p })),
+    ];
+    let best: string | null = null;
+    let bestScore = Infinity;
+    for (const f of floors) {
+      if (x < f.x - 8 || x > f.x + f.w + 8) continue;
+      const dy = y - f.y;
+      // Allow standing slightly above the top, or authored a bit into the slab.
+      if (dy < -100 || dy > 56) continue;
+      const score = Math.abs(dy);
+      if (score < bestScore) {
+        bestScore = score;
+        best = f.id;
+      }
+    }
+    return best;
+  }
+
+  private getCheckpointFloorIds(): Set<string> {
+    if (!this.checkpointFloorIds) {
+      this.checkpointFloorIds = new Set();
+      for (const c of this.level.checkpoints) {
+        const id = this.floorIdAt(c.x, c.y);
+        if (id) this.checkpointFloorIds.add(id);
+      }
+    }
+    return this.checkpointFloorIds;
+  }
+
+  /** Only the platform that holds a checkpoint stays clear — other platforms keep denser content. */
+  private onCheckpointPlatform(x: number, y: number): boolean {
+    const id = this.floorIdAt(x, y);
+    return id != null && this.getCheckpointFloorIds().has(id);
+  }
+
+  private buildInteractables(): void {
+    const gates = (this.level.gates ?? []).filter(
+      (g) => !this.onCheckpointPlatform(g.x + g.w / 2, g.y + g.h / 2),
+    );
+    const levers = (this.level.levers ?? []).filter((l) => !this.onCheckpointPlatform(l.x, l.y));
+    const breakables = (this.level.breakables ?? []).filter(
+      (b) => !this.onCheckpointPlatform(b.x + b.w / 2, b.y + b.h / 2),
+    );
+    this.interact = new InteractSystem(
+      this,
+      this.platforms,
+      { gates, levers, breakables },
+      {
+        toggleGate: (id) => this.interact.toggleGate(id),
+        reverseConveyor: (id) => {
+          const c = this.conveyors.find((x) => x.id === id);
+          if (!c) return false;
+          c.dir = (c.dir * -1) as -1 | 1;
+          c.sprite.setFlipX(c.dir < 0);
+          return true;
+        },
+        toggleFan: (id) => {
+          const fan = this.fans.find((f) => f.id === id);
+          if (!fan) return false;
+          fan.toggle();
+          return true;
+        },
+      },
+    );
+  }
+
+  private tryInteract(): void {
+    if (!this.interact) return;
+    const result = this.interact.tryInteract(this.player);
+    if (result === 'break') {
+      SoundSystem.interact('break');
+      this.events.emit('toast', ZH.brokeBlock);
+    } else if (result === 'control') {
+      SoundSystem.interact('control');
+      this.events.emit('toast', ZH.toggledDevice);
+    }
+  }
+
   private buildFans(): void {
     (this.level.fans ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x + def.w / 2, def.y + def.h / 2)) return;
       this.fans.push(new FanZone(this, def));
     });
   }
 
   private buildCrumbles(): void {
     (this.level.crumbles ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x + def.w / 2, def.y + def.h / 2)) return;
       this.crumbles.push(new CrumblePlatform(this, this.platforms, def));
     });
   }
 
   private buildBumpers(): void {
     (this.level.bumpers ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x, def.y)) return;
       this.bumpers.push(new Bumper(this, def));
     });
   }
 
   private buildPortals(): void {
-    const defs = this.level.portals ?? [];
+    let defs = (this.level.portals ?? []).filter((p) => !this.onCheckpointPlatform(p.x, p.y));
+    const ids = new Set(defs.map((d) => d.id));
+    defs = defs.filter((p) => ids.has(p.pairId));
     if (defs.length) this.portals = new PortalPairSystem(this, defs);
   }
 
   private buildGeysers(): void {
     (this.level.geysers ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x, def.y)) return;
       this.geysers.push(new Geyser(this, def));
     });
   }
 
   private buildTimedPlatforms(): void {
+    // Timed platforms are floors — keep them even if a checkpoint sits nearby on another slab.
     (this.level.timedPlatforms ?? []).forEach((def) => {
       this.timedPlatforms.push(new TimedPlatform(this, this.platforms, def));
     });
@@ -446,6 +726,7 @@ export class GameScene extends Phaser.Scene {
 
   private buildSpikes(): void {
     this.level.spikes.forEach((s) => {
+      if (this.onCheckpointPlatform(s.x, s.y)) return;
       for (let i = 0; i < s.count; i++) {
         const sx = s.x + i * 22;
         // Bottom-anchored: snap to the platform top under this x so spikes never float.
@@ -511,29 +792,86 @@ export class GameScene extends Phaser.Scene {
     const save = SaveSystem.load();
     const weapon = save.activeRun?.weapon ?? save.equipped;
     this.player.setWeapon(weapon);
+    this.player.applyAppearance(
+      shapeById(save.equippedShape).texture,
+      skinById(save.equippedSkin).tint,
+    );
   }
 
   private spawnEnemies(): void {
     this.level.enemies.forEach((def) => {
       const minCp = def.afterCheckpoint ?? -1;
       if (minCp > this.checkpointIndex) return;
+      if (this.onCheckpointPlatform(def.x, def.y)) return;
 
-      const enemy = new Enemy(this, def);
+      const enemy = new Enemy(this, def, (x, y, dir) => {
+        fireProjectile(this, this.hazardProjectiles, {
+          x,
+          y,
+          dir,
+          key: 'hazard_shot',
+          speed: 260,
+          dealsHit: false,
+          lifeMs: 2000,
+        });
+      });
       this.enemies.push(enemy);
+      this.enemiesGroup.add(enemy.sprite);
 
-      if (enemy.type !== 'floater') {
+      const flying = enemy.type === 'floater' || enemy.type === 'bat' || enemy.type === 'ghost';
+      if (!flying) {
         this.physics.add.collider(enemy.sprite, this.platforms);
         this.physics.add.collider(enemy.sprite, this.movingGroup);
       }
 
       this.physics.add.overlap(this.player.sprite, enemy.sprite, () => this.onTouchEnemy(enemy));
-      this.physics.add.overlap(this.projectiles, enemy.sprite, (proj) => {
-        const pea = proj as Phaser.Physics.Arcade.Sprite;
-        if (enemy.dead || pea.getData('spent')) return;
-        const dmg = (pea.getData('damage') as number) || 2;
-        retirePhysicsSprite(pea);
-        enemy.takeHit(dmg, this.player.facing);
-      });
+    });
+  }
+
+  private onProjectileHitEnemy(
+    pea: Phaser.Physics.Arcade.Sprite,
+    enemySprite: Phaser.Physics.Arcade.Sprite,
+  ): void {
+    if (!pea.active || pea.getData('spent')) return;
+    // Consume the projectile immediately so one pea can never multi-hit.
+    const dealsHit = pea.getData('dealsHit') === true;
+    pea.setData('spent', true);
+    retirePhysicsSprite(pea);
+
+    if (!dealsHit) return;
+    const enemy = enemySprite.getData('enemy') as Enemy | undefined;
+    if (!enemy || enemy.dead) return;
+    enemy.takeWeaponHit(this.player.facing);
+    this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 700);
+  }
+
+  /** Continuous hit test for high-speed peas vs small / flying foes. */
+  private sweepPlayerProjectiles(): void {
+    const shots = this.projectiles.getChildren() as Phaser.Physics.Arcade.Sprite[];
+    for (const pea of shots) {
+      if (!pea.active || pea.getData('spent') || pea.getData('dealsHit') !== true) continue;
+      const prevX = Number(pea.getData('prevX') ?? pea.x);
+      const prevY = Number(pea.getData('prevY') ?? pea.y);
+      for (const enemy of this.enemies) {
+        if (enemy.dead || !enemy.sprite.active) continue;
+        const body = enemy.sprite.body as Phaser.Physics.Arcade.Body | null;
+        if (!body) continue;
+        if (segmentHitsBody(prevX, prevY, pea.x, pea.y, body, 12)) {
+          this.onProjectileHitEnemy(pea, enemy.sprite);
+          break;
+        }
+      }
+      if (pea.active && !pea.getData('spent')) {
+        pea.setData('prevX', pea.x);
+        pea.setData('prevY', pea.y);
+      }
+    }
+  }
+
+  private hasLivePlayerShot(): boolean {
+    return this.projectiles.getChildren().some((obj) => {
+      const s = obj as Phaser.Physics.Arcade.Sprite;
+      return s.active && s.getData('dealsHit') === true && s.getData('spent') !== true;
     });
   }
 
@@ -547,6 +885,52 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private spawnCoins(): void {
+    (this.level.coins ?? []).forEach((def) => {
+      const coin = new CoinPickup(this, def.x, def.y, def.value ?? 1);
+      this.coins.push(coin);
+      this.physics.add.overlap(this.player.sprite, coin.sprite, () => this.onCoin(coin));
+    });
+  }
+
+  private onCoin(coin: CoinPickup): void {
+    // Ignore pickups after clear — avoids overlap+destroy during win transition.
+    if (!this.runActive || this.dying || !coin.sprite.active) return;
+    const gained = coin.collect();
+    if (gained <= 0) return;
+    SaveSystem.addCoins(gained);
+    this.events.emit('toast', ZH.gotCoin(gained));
+    this.events.emit('hud', this.getHudPayload());
+  }
+
+  private tryUseSkill(): void {
+    const save = SaveSystem.load();
+    const skillId = save.equippedSkill;
+    if (skillId === 'none') {
+      this.events.emit('toast', ZH.noSkillEquipped);
+      return;
+    }
+    const now = this.time.now;
+    if (now < this.skillReadyAt) {
+      this.events.emit('toast', ZH.skillCooldown);
+      return;
+    }
+    const def = skillById(skillId);
+    if (!def) return;
+    this.skillReadyAt = now + def.cooldownMs;
+    if (skillId === 'blink') {
+      this.player.blinkForward(150);
+      SoundSystem.skill('blink');
+    } else if (skillId === 'haste') {
+      this.player.activateHaste(now, def.durationMs);
+      SoundSystem.skill('haste');
+    } else if (skillId === 'flight') {
+      this.player.activateFlight(now, def.durationMs);
+      SoundSystem.skill('flight');
+    }
+    this.events.emit('hud', this.getHudPayload());
+  }
+
   private tryAttack(): void {
     const now = this.time.now;
     if (!this.player.canAttack(now)) return;
@@ -557,7 +941,15 @@ export class GameScene extends Phaser.Scene {
     const py = this.player.sprite.y;
     const dir = this.player.facing;
 
-    if (stats.pellets > 0) {
+    if (stats.projectile && stats.pellets > 0) {
+      this.stompSuppressUntil = Math.max(this.stompSuppressUntil, now + 800);
+      const shootKind =
+        this.player.weapon === 'fireball'
+          ? 'fire'
+          : this.player.weapon === 'shotgun'
+            ? 'shot'
+            : 'pea';
+      SoundSystem.shoot(shootKind);
       for (let i = 0; i < stats.pellets; i++) {
         const t = stats.pellets === 1 ? 0 : i / (stats.pellets - 1) - 0.5;
         const vy = t * stats.spread * stats.projSpeed;
@@ -567,7 +959,7 @@ export class GameScene extends Phaser.Scene {
           dir,
           key: stats.projKey,
           speed: stats.projSpeed,
-          damage: stats.projDamage,
+          dealsHit: true,
           scale: this.player.weapon === 'fireball' ? 1.35 : 1,
           vy,
         });
@@ -575,19 +967,21 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const damage = stats.meleeDamage;
+    if (!stats.melee) return;
+    SoundSystem.shoot('melee');
     const range = stats.meleeRange || 30;
+    let meleeHit = false;
     this.enemies.forEach((enemy) => {
       if (!enemy.sprite.active || enemy.dead) return;
       const dx = enemy.sprite.x - this.player.sprite.x;
       const dy = Math.abs(enemy.sprite.y - this.player.sprite.y);
       if (Math.sign(dx || dir) === dir && Math.abs(dx) < range && dy < 40) {
-        if (damage > 0) enemy.takeHit(damage, dir);
-        else if (enemy.type === 'slime' || enemy.type === 'hopper') {
-          enemy.sprite.setVelocityX(dir * 240);
-        }
+        const before = enemy.hitsLeft;
+        enemy.takeWeaponHit(dir);
+        if (enemy.hitsLeft < before || enemy.dead) meleeHit = true;
       }
     });
+    if (meleeHit) this.player.makeInvincible(now, 280);
 
     const swipe = this.add
       .rectangle(px, py, range, this.player.weapon === 'hammer' ? 36 : 24, 0xffffff, 0.35)
@@ -604,7 +998,38 @@ export class GameScene extends Phaser.Scene {
     if (enemy.dead || !enemy.sprite.active || !this.runActive || this.dying) return;
     const now = this.time.now;
     if (this.player.isInvincible(now)) return;
-    this.killPlayer();
+
+    const pBody = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    const eBody = enemy.sprite.body as Phaser.Physics.Arcade.Body;
+    const playerBottom = pBody.bottom;
+    const enemyTop = eBody.top;
+    const descending = pBody.velocity.y > 120;
+    const fromAbove = playerBottom <= enemyTop + 8;
+
+    // Jump + peashooter looked like gun OHKO because airborne contact triggered stomp.
+    const suppressStomp =
+      this.keyJ.isDown ||
+      now < this.stompSuppressUntil ||
+      this.player.didAttackRecently(now, 800) ||
+      this.hasLivePlayerShot() ||
+      enemy.isStompImmune(now);
+
+    const canStomp =
+      descending && fromAbove && enemy.canBeStomped && !suppressStomp;
+
+    if (canStomp) {
+      enemy.stomp();
+      this.player.launch(pBody.velocity.x * 0.25, -460);
+      this.player.makeInvincible(now, 320);
+      return;
+    }
+
+    // While shooting / after a hit from above, ignore contact (no false stomp, no self-kill).
+    if (suppressStomp && (fromAbove || enemy.isStompImmune(now))) {
+      return;
+    }
+
+    this.hurtPlayer();
   }
 
   private onPickup(pickup: WeaponPickup): void {
@@ -619,6 +1044,23 @@ export class GameScene extends Phaser.Scene {
 
   private checkFallDeath(): void {
     if (this.player.sprite.y > this.level.worldHeight - 20) {
+      // Void fall: instant checkpoint respawn (full vitals restore).
+      this.killPlayer();
+    }
+  }
+
+  /** Monster / spike / spit: 1 armor, else 1 HP. Death → checkpoint. */
+  private hurtPlayer(): void {
+    if (!this.runActive || this.dying) return;
+    const now = this.time.now;
+    if (this.player.isInvincible(now)) return;
+
+    const result = this.player.takeDamage(now);
+    this.cameras.main.shake(80, 0.004);
+    this.events.emit('toast', result.hitArmor ? ZH.armorLost : ZH.hpLost);
+    this.events.emit('hud', this.getHudPayload());
+
+    if (result.dead) {
       this.killPlayer();
     }
   }
@@ -672,15 +1114,25 @@ export class GameScene extends Phaser.Scene {
   private winLevel(): void {
     if (!this.runActive || this.dying) return;
     this.runActive = false;
+    // Stop Arcade immediately so coin/finish overlaps can't destroy bodies mid-step.
+    this.physics.pause();
+    const finishBody = this.finish.body as Phaser.Physics.Arcade.Body | null;
+    if (finishBody) finishBody.enable = false;
+
     const stars = this.calcStars();
-    SaveSystem.completeLevel(this.level.id, stars, Math.floor(this.elapsedMs), this.level.index);
-    this.events.emit('win', {
+    const payload = {
       timeMs: Math.floor(this.elapsedMs),
       deaths: this.deaths,
       stars,
       hasNext: this.level.index < LEVELS.length,
       nextLevelId: LEVELS.find((l) => l.index === this.level.index + 1)?.id,
       levelId: this.level.id,
+    };
+
+    // Defer save + UI out of the current physics callback stack.
+    this.time.delayedCall(0, () => {
+      SaveSystem.completeLevel(this.level.id, stars, payload.timeMs, this.level.index);
+      this.events.emit('win', payload);
     });
   }
 
@@ -691,10 +1143,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getHudPayload() {
+    const save = SaveSystem.load();
+    const now = this.time.now;
+    const cdLeft = Math.max(0, this.skillReadyAt - now);
     return {
       timeMs: Math.floor(this.elapsedMs),
       deaths: this.deaths,
+      coins: save.coins,
+      hp: this.player.hp,
+      maxHp: this.player.maxHp,
+      armor: this.player.armor,
+      maxArmor: this.player.maxArmor,
       weaponLabel: weaponLabel(this.player.weapon),
+      skillLabel: skillLabel(save.equippedSkill),
+      skillCdMs: cdLeft,
       levelIndex: this.level.index,
     };
   }

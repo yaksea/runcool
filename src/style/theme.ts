@@ -16,6 +16,10 @@ export const THEME = {
   slime: 0x2ecc71,
   spikeball: 0x8e44ad,
   floater: 0x3498db,
+  bat: 0x5d6d7e,
+  roller: 0xd35400,
+  ghost: 0xa569bd,
+  spitter: 0x16a085,
   glove: 0xff8c42,
   peashooter: 0x5dade2,
   wood: 0xc68642,
@@ -42,4 +46,11 @@ export const PHYSICS = {
   peaSpeed: 480,
   bouncePadVelocity: -720,
   seesawMaxAngle: 22,
+} as const;
+
+/** Player combat vitals. */
+export const VITALS = {
+  maxHp: 3,
+  maxArmor: 3,
+  armorRegenMs: 10000,
 } as const;

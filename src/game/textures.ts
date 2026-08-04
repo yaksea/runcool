@@ -9,24 +9,104 @@ function ensure(scene: Phaser.Scene, key: string, draw: (g: Phaser.GameObjects.G
   g.destroy();
 }
 
+/** Replace texture even if cached (hot-reload / art fixes). */
+function replace(scene: Phaser.Scene, key: string, draw: (g: Phaser.GameObjects.Graphics) => void, w: number, h: number) {
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  ensure(scene, key, draw, w, h);
+}
+
+function drawCuteEyes(g: Phaser.GameObjects.Graphics, lx: number, rx: number, y: number, r = 3.2): void {
+  g.fillStyle(0x1a1a1a, 1);
+  g.fillCircle(lx, y, r);
+  g.fillCircle(rx, y, r);
+  g.fillStyle(0xffffff, 0.55);
+  g.fillCircle(lx - 0.8, y - 1, r * 0.35);
+  g.fillCircle(rx - 0.8, y - 1, r * 0.35);
+}
+
 export function generateTextures(scene: Phaser.Scene): void {
-  ensure(
-    scene,
-    'player',
-    (g) => {
-      g.fillStyle(THEME.player, 1);
-      g.fillRoundedRect(2, 2, 36, 36, 10);
-      g.lineStyle(3, THEME.playerStroke, 1);
-      g.strokeRoundedRect(2, 2, 36, 36, 10);
-      g.fillStyle(0x1a1a1a, 1);
-      g.fillCircle(14, 16, 3.5);
-      g.fillCircle(28, 16, 3.5);
-      g.fillStyle(0xffffff, 0.35);
-      g.fillRoundedRect(8, 6, 12, 8, 4);
-    },
-    40,
-    40,
-  );
+  // Shape variants (white body for tint). Keep legacy 'player' = square.
+  replace(scene, 'player_square', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillRoundedRect(2, 2, 36, 36, 10);
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokeRoundedRect(2, 2, 36, 36, 10);
+    drawCuteEyes(g, 14, 28, 16);
+  }, 40, 40);
+
+  replace(scene, 'player_round', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(20, 20, 17);
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokeCircle(20, 20, 17);
+    drawCuteEyes(g, 14, 26, 17);
+  }, 40, 40);
+
+  replace(scene, 'player_diamond', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillPoints(
+      [
+        { x: 20, y: 2 },
+        { x: 38, y: 20 },
+        { x: 20, y: 38 },
+        { x: 2, y: 20 },
+      ],
+      true,
+    );
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokePoints(
+      [
+        { x: 20, y: 2 },
+        { x: 38, y: 20 },
+        { x: 20, y: 38 },
+        { x: 2, y: 20 },
+      ],
+      true,
+    );
+    drawCuteEyes(g, 14, 26, 18);
+  }, 40, 40);
+
+  replace(scene, 'player_triangle', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillRoundedRect(4, 18, 32, 18, 6);
+    g.fillTriangle(20, 4, 4, 22, 36, 22);
+    g.lineStyle(2, 0xcccccc, 1);
+    g.strokeTriangle(20, 4, 4, 22, 36, 22);
+    drawCuteEyes(g, 14, 26, 24, 2.8);
+  }, 40, 40);
+
+  replace(scene, 'player_pill', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillRoundedRect(6, 2, 28, 36, 14);
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokeRoundedRect(6, 2, 28, 36, 14);
+    drawCuteEyes(g, 15, 25, 16);
+  }, 40, 40);
+
+  replace(scene, 'player_hex', (g) => {
+    const cx = 20;
+    const cy = 20;
+    const r = 17;
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      pts.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+    }
+    g.fillStyle(0xffffff, 1);
+    g.fillPoints(pts, true);
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokePoints(pts, true);
+    drawCuteEyes(g, 14, 26, 18);
+  }, 40, 40);
+
+  // Legacy key (same as square) for older call sites
+  replace(scene, 'player', (g) => {
+    g.fillStyle(0xffffff, 1);
+    g.fillRoundedRect(2, 2, 36, 36, 10);
+    g.lineStyle(3, 0xcccccc, 1);
+    g.strokeRoundedRect(2, 2, 36, 36, 10);
+    drawCuteEyes(g, 14, 28, 16);
+  }, 40, 40);
 
   ensure(
     scene,
@@ -201,44 +281,152 @@ export function generateTextures(scene: Phaser.Scene): void {
     12,
   );
 
-  ensure(
+  replace(
     scene,
     'cloud',
     (g) => {
-      g.fillStyle(0xffffff, 0.85);
-      g.fillEllipse(30, 22, 50, 24);
-      g.fillEllipse(16, 26, 28, 18);
-      g.fillEllipse(46, 26, 30, 18);
+      g.fillStyle(0xffffff, 0.92);
+      g.fillEllipse(40, 28, 62, 30);
+      g.fillEllipse(18, 32, 36, 22);
+      g.fillEllipse(58, 30, 40, 24);
+      g.fillEllipse(36, 18, 34, 20);
+      g.fillStyle(0xeaf6ff, 0.55);
+      g.fillEllipse(28, 22, 22, 12);
     },
-    64,
-    40,
+    80,
+    48,
   );
 
-  ensure(
+  replace(
     scene,
     'hill',
     (g) => {
-      g.fillStyle(0x6bbf8a, 0.55);
-      g.fillEllipse(80, 60, 160, 80);
+      g.fillStyle(0x5aad78, 1);
+      g.fillEllipse(90, 70, 180, 100);
+      g.fillStyle(0x6bc48a, 1);
+      g.fillEllipse(70, 62, 90, 50);
     },
-    160,
-    80,
+    180,
+    90,
   );
 
-  ensure(
+  // 40px 宽竖向可平铺：侧杆贴边且够粗，避免 tileSprite 裁切后变细/怪异
+  replace(
     scene,
     'ladder',
     (g) => {
+      const W = 40;
+      const H = 48;
+      const rail = 9;
       g.fillStyle(THEME.woodDark, 1);
-      g.fillRect(4, 0, 6, 64);
-      g.fillRect(34, 0, 6, 64);
+      g.fillRect(0, 0, rail, H);
+      g.fillRect(W - rail, 0, rail, H);
+      // rail highlight
+      g.fillStyle(0xa67c52, 1);
+      g.fillRect(2, 0, 3, H);
+      g.fillRect(W - rail + 2, 0, 3, H);
+      // rungs
       g.fillStyle(THEME.ladder, 1);
-      for (let i = 0; i < 5; i++) {
-        g.fillRoundedRect(4, 6 + i * 12, 36, 5, 2);
+      for (let i = 0; i < 4; i++) {
+        const y = 4 + i * 12;
+        g.fillRoundedRect(rail - 2, y, W - rail * 2 + 4, 7, 2);
+        g.fillStyle(0xe8c49a, 0.55);
+        g.fillRoundedRect(rail, y + 1, W - rail * 2, 2, 1);
+        g.fillStyle(THEME.ladder, 1);
       }
     },
-    44,
-    64,
+    40,
+    48,
+  );
+
+  replace(
+    scene,
+    'sun',
+    (g) => {
+      g.fillStyle(0xffe066, 0.35);
+      g.fillCircle(40, 40, 38);
+      g.fillStyle(0xffd43b, 1);
+      g.fillCircle(40, 40, 22);
+      g.fillStyle(0xfff3bf, 0.9);
+      g.fillCircle(34, 34, 8);
+    },
+    80,
+    80,
+  );
+
+  replace(
+    scene,
+    'mountain',
+    (g) => {
+      g.fillStyle(0x7f9bb5, 1);
+      g.fillTriangle(80, 10, 10, 110, 150, 110);
+      g.fillStyle(0x95b0c7, 1);
+      g.fillTriangle(80, 10, 55, 70, 100, 70);
+      g.fillStyle(0xf8f9fa, 0.85);
+      g.fillTriangle(80, 10, 68, 38, 92, 38);
+    },
+    160,
+    112,
+  );
+
+  replace(
+    scene,
+    'tree',
+    (g) => {
+      g.fillStyle(0x8d6e4c, 1);
+      g.fillRect(22, 48, 12, 36);
+      g.fillStyle(0x3d8b5a, 1);
+      g.fillCircle(28, 36, 26);
+      g.fillStyle(0x4caf6e, 1);
+      g.fillCircle(18, 42, 16);
+      g.fillCircle(38, 40, 17);
+      g.fillStyle(0x6fd68f, 0.7);
+      g.fillCircle(24, 28, 10);
+    },
+    56,
+    84,
+  );
+
+  replace(
+    scene,
+    'bush',
+    (g) => {
+      g.fillStyle(0x3f8f5a, 1);
+      g.fillEllipse(28, 22, 48, 28);
+      g.fillEllipse(14, 26, 28, 20);
+      g.fillEllipse(42, 26, 30, 20);
+      g.fillStyle(0x5fc97a, 0.7);
+      g.fillEllipse(24, 16, 18, 12);
+    },
+    56,
+    40,
+  );
+
+  replace(
+    scene,
+    'grass_tuft',
+    (g) => {
+      g.fillStyle(0x4caf50, 1);
+      g.fillTriangle(8, 24, 4, 6, 12, 24);
+      g.fillTriangle(14, 24, 12, 2, 18, 24);
+      g.fillTriangle(20, 24, 18, 8, 26, 24);
+      g.fillStyle(0x81c784, 1);
+      g.fillTriangle(11, 24, 10, 10, 15, 24);
+    },
+    30,
+    26,
+  );
+
+  replace(
+    scene,
+    'bird',
+    (g) => {
+      g.fillStyle(0x2c3e50, 0.8);
+      g.fillTriangle(1, 11, 10, 4, 10, 8);
+      g.fillTriangle(10, 4, 19, 11, 10, 8);
+    },
+    20,
+    14,
   );
 
   ensure(
@@ -429,4 +617,102 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillStyle(0x2e86c1, 1);
     g.fillCircle(32, 20, 4);
   }, 64, 44);
+
+  ensure(scene, 'bat', (g) => {
+    g.fillStyle(THEME.bat, 1);
+    g.fillEllipse(20, 18, 18, 14);
+    g.fillStyle(0x34495e, 1);
+    g.fillTriangle(4, 18, 16, 10, 16, 26);
+    g.fillTriangle(36, 18, 24, 10, 24, 26);
+    g.fillStyle(0xffffff, 1);
+    g.fillCircle(16, 16, 2.5);
+    g.fillCircle(24, 16, 2.5);
+  }, 40, 32);
+
+  ensure(scene, 'roller', (g) => {
+    g.fillStyle(THEME.roller, 1);
+    g.fillCircle(18, 18, 16);
+    g.fillStyle(0xf5b041, 1);
+    g.fillCircle(18, 18, 8);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillRect(16, 4, 4, 28);
+    g.fillRect(4, 16, 28, 4);
+  }, 36, 36);
+
+  ensure(scene, 'ghost', (g) => {
+    g.fillStyle(THEME.ghost, 0.9);
+    g.fillEllipse(18, 16, 28, 26);
+    g.fillTriangle(6, 26, 12, 36, 18, 26);
+    g.fillTriangle(18, 26, 24, 36, 30, 26);
+    g.fillStyle(0xffffff, 0.95);
+    g.fillCircle(12, 14, 4);
+    g.fillCircle(24, 14, 4);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(13, 14, 2);
+    g.fillCircle(25, 14, 2);
+  }, 36, 38);
+
+  ensure(scene, 'spitter', (g) => {
+    g.fillStyle(THEME.spitter, 1);
+    g.fillRoundedRect(4, 10, 32, 24, 8);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(14, 20, 3);
+    g.fillCircle(26, 20, 3);
+    g.fillStyle(0x48c9b0, 1);
+    g.fillCircle(36, 20, 7);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillCircle(34, 18, 2);
+  }, 44, 36);
+
+  ensure(scene, 'hazard_shot', (g) => {
+    g.fillStyle(0xe74c3c, 1);
+    g.fillCircle(6, 6, 6);
+    g.fillStyle(0xf5b041, 1);
+    g.fillCircle(6, 6, 3);
+  }, 12, 12);
+
+  ensure(scene, 'coin', (g) => {
+    g.fillStyle(0xf1c40f, 1);
+    g.fillCircle(12, 12, 11);
+    g.fillStyle(0xf7dc6f, 1);
+    g.fillCircle(12, 12, 7);
+    g.fillStyle(0xb7950b, 1);
+    g.fillRect(10, 5, 4, 14);
+  }, 24, 24);
+
+  ensure(scene, 'gate', (g) => {
+    g.fillStyle(0x7f8c8d, 1);
+    g.fillRoundedRect(0, 0, 48, 64, 4);
+    g.fillStyle(0x566573, 1);
+    g.fillRect(6, 8, 36, 48);
+    g.fillStyle(0xf1c40f, 1);
+    g.fillCircle(34, 32, 4);
+  }, 48, 64);
+
+  ensure(scene, 'lever_off', (g) => {
+    g.fillStyle(0x5d6d7e, 1);
+    g.fillRoundedRect(8, 28, 28, 10, 3);
+    g.fillStyle(0xe74c3c, 1);
+    g.fillRoundedRect(18, 4, 8, 28, 3);
+    g.fillCircle(22, 6, 6);
+  }, 44, 40);
+
+  ensure(scene, 'lever_on', (g) => {
+    g.fillStyle(0x5d6d7e, 1);
+    g.fillRoundedRect(8, 28, 28, 10, 3);
+    g.fillStyle(0x2ecc71, 1);
+    g.fillRoundedRect(18, 4, 8, 28, 3);
+    g.fillCircle(22, 6, 6);
+  }, 44, 40);
+
+  ensure(scene, 'breakable', (g) => {
+    g.fillStyle(0xc68642, 1);
+    g.fillRoundedRect(0, 0, 48, 48, 4);
+    g.lineStyle(2, 0x8d5a2b, 1);
+    g.strokeRoundedRect(2, 2, 44, 44, 3);
+    g.lineBetween(4, 24, 44, 24);
+    g.lineBetween(24, 4, 24, 44);
+    g.fillStyle(0xe8b86d, 0.5);
+    g.fillRect(6, 6, 14, 14);
+  }, 48, 48);
 }

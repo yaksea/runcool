@@ -13,8 +13,12 @@ type InventoryPayload = {
 export class UIScene extends Phaser.Scene {
   private timeText!: Phaser.GameObjects.Text;
   private deathText!: Phaser.GameObjects.Text;
+  private coinText!: Phaser.GameObjects.Text;
+  private vitalsText!: Phaser.GameObjects.Text;
   private weaponText!: Phaser.GameObjects.Text;
+  private skillText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
+  private interactHintText!: Phaser.GameObjects.Text;
   private pauseLayer?: Phaser.GameObjects.Container;
   private bagLayer?: Phaser.GameObjects.Container;
   private winLayer?: Phaser.GameObjects.Container;
@@ -39,14 +43,36 @@ export class UIScene extends Phaser.Scene {
 
     this.timeText = this.add.text(16, 48, `${ZH.time}: 0.0s`, style).setScrollFactor(0).setDepth(100);
     this.deathText = this.add.text(16, 84, `${ZH.deaths}: 0`, style).setScrollFactor(0).setDepth(100);
+    this.coinText = this.add.text(16, 120, `${ZH.coins}: 0`, style).setScrollFactor(0).setDepth(100);
+    this.vitalsText = this.add
+      .text(16, 156, `${ZH.hp}: ❤❤❤  ${ZH.armor}: ◆◆◆`, style)
+      .setScrollFactor(0)
+      .setDepth(100);
     this.weaponText = this.add
-      .text(16, 120, `${ZH.weapon}: ${ZH.weaponNone}`, style)
+      .text(16, 192, `${ZH.weapon}: ${ZH.weaponNone}`, style)
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.skillText = this.add
+      .text(16, 228, `${ZH.skill}: ${ZH.skillNone}`, style)
       .setScrollFactor(0)
       .setDepth(100);
     this.add
-      .text(16, 156, `${ZH.bag}: B`, style)
+      .text(16, 264, `${ZH.bag}: B · K`, style)
       .setScrollFactor(0)
       .setDepth(100);
+
+    this.interactHintText = this.add
+      .text(THEME.width / 2, THEME.height - 36, '', {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#ffffff',
+        backgroundColor: '#1f2d3dcc',
+        padding: { x: 12, y: 6 },
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(110)
+      .setAlpha(0);
 
     this.toastText = this.add
       .text(THEME.width / 2, 160, '', {
@@ -62,12 +88,43 @@ export class UIScene extends Phaser.Scene {
       .setAlpha(0);
 
     const game = this.scene.get('GameScene') as GameScene;
-    game.events.on('hud', (payload: { timeMs: number; deaths: number; weaponLabel: string }) => {
-      this.timeText.setText(`${ZH.time}: ${(payload.timeMs / 1000).toFixed(1)}s`);
-      this.deathText.setText(`${ZH.deaths}: ${payload.deaths}`);
-      this.weaponText.setText(`${ZH.weapon}: ${payload.weaponLabel}`);
-    });
+    game.events.on(
+      'hud',
+      (payload: {
+        timeMs: number;
+        deaths: number;
+        coins: number;
+        hp: number;
+        maxHp: number;
+        armor: number;
+        maxArmor: number;
+        weaponLabel: string;
+        skillLabel: string;
+        skillCdMs: number;
+      }) => {
+        this.timeText.setText(`${ZH.time}: ${(payload.timeMs / 1000).toFixed(1)}s`);
+        this.deathText.setText(`${ZH.deaths}: ${payload.deaths}`);
+        this.coinText.setText(`${ZH.coins}: ${payload.coins}`);
+        const hearts =
+          '❤'.repeat(Math.max(0, payload.hp)) + '♡'.repeat(Math.max(0, payload.maxHp - payload.hp));
+        const shields =
+          '◆'.repeat(Math.max(0, payload.armor)) +
+          '◇'.repeat(Math.max(0, payload.maxArmor - payload.armor));
+        this.vitalsText.setText(`${ZH.hp}: ${hearts}  ${ZH.armor}: ${shields}`);
+        this.weaponText.setText(`${ZH.weapon}: ${payload.weaponLabel}`);
+        const cd = payload.skillCdMs > 0 ? ` (${(payload.skillCdMs / 1000).toFixed(1)}s)` : '';
+        this.skillText.setText(`${ZH.skill}: ${payload.skillLabel}${cd}`);
+      },
+    );
     game.events.on('toast', (msg: string) => this.showToast(msg));
+    game.events.on('interactHint', (hint: string) => {
+      if (hint) {
+        this.interactHintText.setText(hint);
+        this.interactHintText.setAlpha(1);
+      } else {
+        this.interactHintText.setAlpha(0);
+      }
+    });
     game.events.on('pause', (paused: boolean) => {
       if (paused) this.showPause();
       else this.hidePause();
@@ -88,6 +145,7 @@ export class UIScene extends Phaser.Scene {
     this.events.on('shutdown', () => {
       game.events.off('hud');
       game.events.off('toast');
+      game.events.off('interactHint');
       game.events.off('pause');
       game.events.off('inventory');
       game.events.off('win');

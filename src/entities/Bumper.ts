@@ -18,10 +18,12 @@ export class Bumper {
       .setDepth(7);
     scene.tweens.add({
       targets: this.sprite,
-      scaleX: { from: 1, to: 1.08 },
-      duration: 500,
+      scaleX: { from: 1, to: 1.12 },
+      scaleY: { from: 1, to: 0.92 },
+      duration: 420,
       yoyo: true,
       repeat: -1,
+      ease: 'Sine.easeInOut',
     });
   }
 
@@ -35,7 +37,7 @@ export class Bumper {
     if (Math.abs(dx) > 36 || Math.abs(dy) > 34) return;
 
     player.launch(this.def.dir * 420, -320);
-    this.cooldownUntil = now + 400;
+    this.cooldownUntil = now + 220;
     this.scene.tweens.add({
       targets: this.sprite,
       scaleX: 0.7,

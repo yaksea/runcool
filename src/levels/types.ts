@@ -11,10 +11,25 @@ export type MovingPlatformDef = PlatformDef & {
 export type SpikeDef = { x: number; y: number; count: number };
 export type PadDef = { x: number; y: number };
 export type CheckpointDef = { x: number; y: number };
+export type CoinDef = { x: number; y: number; value?: number };
 export type LadderDef = { x: number; y: number; w: number; h: number };
 export type SeesawDef = { x: number; y: number; w: number };
-export type ConveyorDef = PlatformDef & { dir: -1 | 1; speed: number };
-export type FanDef = { x: number; y: number; w: number; h: number; force: number };
+export type ConveyorDef = PlatformDef & { dir: -1 | 1; speed: number; id?: string };
+export type FanDef = { x: number; y: number; w: number; h: number; force: number; id?: string };
+
+/** Solid door opened/closed by a lever. */
+export type GateDef = PlatformDef & { id: string; open?: boolean };
+
+/** Press X nearby to toggle a gate / conveyor / fan. */
+export type LeverDef = {
+  x: number;
+  y: number;
+  targetId: string;
+  targetType: 'gate' | 'conveyor' | 'fan';
+};
+
+/** Press X nearby to smash (hits times). */
+export type BreakableDef = PlatformDef & { hits?: number };
 export type CrumbleDef = PlatformDef & { shakeMs?: number; goneMs?: number };
 export type BumperDef = { x: number; y: number; dir: -1 | 1 };
 export type PortalDef = { id: string; x: number; y: number; pairId: string };
@@ -25,8 +40,20 @@ export type TimedPlatformDef = PlatformDef & {
   startOn?: boolean;
 };
 
+export type EnemyType =
+  | 'slime'
+  | 'spikeball'
+  | 'floater'
+  | 'hopper'
+  | 'tank'
+  | 'chaser'
+  | 'bat'
+  | 'roller'
+  | 'ghost'
+  | 'spitter';
+
 export type EnemyDef = {
-  type: 'slime' | 'spikeball' | 'floater' | 'hopper' | 'tank' | 'chaser';
+  type: EnemyType;
   x: number;
   y: number;
   patrol: number;
@@ -60,9 +87,13 @@ export type LevelDef = {
   portals?: PortalDef[];
   geysers?: GeyserDef[];
   timedPlatforms?: TimedPlatformDef[];
+  gates?: GateDef[];
+  levers?: LeverDef[];
+  breakables?: BreakableDef[];
   spikes: SpikeDef[];
   pads: PadDef[];
   enemies: EnemyDef[];
   weapons: WeaponDef[];
+  coins?: CoinDef[];
   checkpoints: CheckpointDef[];
 };

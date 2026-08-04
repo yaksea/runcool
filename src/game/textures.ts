@@ -24,6 +24,68 @@ function drawCuteEyes(g: Phaser.GameObjects.Graphics, lx: number, rx: number, y:
   g.fillCircle(rx - 0.8, y - 1, r * 0.35);
 }
 
+/** Classic heart icon centered in w×h. */
+function drawHeartIcon(
+  g: Phaser.GameObjects.Graphics,
+  fill: number,
+  stroke: number,
+  w: number,
+  h: number,
+): void {
+  const cx = w / 2;
+  const cy = h / 2;
+  // Two lobes + pointed tip — reads clearly as ❤ even at small size.
+  const lobeR = Math.min(w, h) * 0.28;
+  const lobeY = cy - h * 0.12;
+  const tipY = cy + h * 0.42;
+  const left = cx - w * 0.22;
+  const right = cx + w * 0.22;
+  g.fillStyle(fill, 1);
+  g.fillCircle(left, lobeY, lobeR);
+  g.fillCircle(right, lobeY, lobeR);
+  g.fillTriangle(cx - w * 0.42, cy + h * 0.02, cx + w * 0.42, cy + h * 0.02, cx, tipY);
+  g.fillTriangle(left - lobeR * 0.15, lobeY, right + lobeR * 0.15, lobeY, cx, tipY);
+  g.lineStyle(1.5, stroke, 1);
+  g.strokeCircle(left, lobeY, lobeR);
+  g.strokeCircle(right, lobeY, lobeR);
+  g.lineBetween(cx - w * 0.4, cy + h * 0.02, cx, tipY);
+  g.lineBetween(cx + w * 0.4, cy + h * 0.02, cx, tipY);
+}
+
+/** Diamond (armor) icon centered in w×h. */
+function drawDiamondIcon(
+  g: Phaser.GameObjects.Graphics,
+  fill: number,
+  stroke: number,
+  w: number,
+  h: number,
+): void {
+  const cx = w / 2;
+  const cy = h / 2;
+  const sx = w * 0.36;
+  const sy = h * 0.4;
+  g.fillStyle(fill, 1);
+  g.fillPoints(
+    [
+      { x: cx, y: cy - sy },
+      { x: cx + sx, y: cy },
+      { x: cx, y: cy + sy },
+      { x: cx - sx, y: cy },
+    ],
+    true,
+  );
+  g.lineStyle(1.5, stroke, 1);
+  g.strokePoints(
+    [
+      { x: cx, y: cy - sy },
+      { x: cx + sx, y: cy },
+      { x: cx, y: cy + sy },
+      { x: cx - sx, y: cy },
+    ],
+    true,
+  );
+}
+
 export function generateTextures(scene: Phaser.Scene): void {
   // Shape variants (white body for tint). Keep legacy 'player' = square.
   replace(scene, 'player_square', (g) => {
@@ -715,4 +777,38 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillStyle(0xe8b86d, 0.5);
     g.fillRect(6, 6, 14, 14);
   }, 48, 48);
+
+  // HUD vitals: red heart / gray diamond; empty slots are white. Same canvas size for alignment.
+  replace(scene, 'hud_hp_on', (g) => drawHeartIcon(g, 0xe74c3c, 0x1f2d3d, 20, 20), 20, 20);
+  replace(scene, 'hud_hp_off', (g) => drawHeartIcon(g, 0xffffff, 0x1f2d3d, 20, 20), 20, 20);
+  replace(scene, 'hud_armor_on', (g) => drawDiamondIcon(g, 0x7f8c8d, 0x1f2d3d, 20, 20), 20, 20);
+  replace(scene, 'hud_armor_off', (g) => drawDiamondIcon(g, 0xffffff, 0x1f2d3d, 20, 20), 20, 20);
+
+  // Warp pipe entrance for arena challenge.
+  ensure(scene, 'pipe', (g) => {
+    g.fillStyle(0x27ae60, 1);
+    g.fillRoundedRect(4, 18, 40, 46, 4);
+    g.fillStyle(0x2ecc71, 1);
+    g.fillRoundedRect(0, 0, 48, 22, 6);
+    g.lineStyle(3, 0x1e8449, 1);
+    g.strokeRoundedRect(0, 0, 48, 22, 6);
+    g.strokeRoundedRect(4, 18, 40, 46, 4);
+    g.fillStyle(0x145a32, 1);
+    g.fillRect(10, 8, 28, 8);
+  }, 48, 64);
+
+  ensure(scene, 'pipe_sealed', (g) => {
+    g.fillStyle(0x7f8c8d, 1);
+    g.fillRoundedRect(4, 18, 40, 46, 4);
+    g.fillStyle(0x95a5a6, 1);
+    g.fillRoundedRect(0, 0, 48, 22, 6);
+    g.lineStyle(3, 0x5d6d7e, 1);
+    g.strokeRoundedRect(0, 0, 48, 22, 6);
+    g.strokeRoundedRect(4, 18, 40, 46, 4);
+    g.fillStyle(0x4a5560, 1);
+    g.fillRect(10, 8, 28, 8);
+    g.lineStyle(3, 0xc0392b, 1);
+    g.lineBetween(8, 12, 40, 52);
+    g.lineBetween(40, 12, 8, 52);
+  }, 48, 64);
 }

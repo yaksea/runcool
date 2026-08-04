@@ -12,6 +12,8 @@ export type SpikeDef = { x: number; y: number; count: number };
 export type PadDef = { x: number; y: number };
 export type CheckpointDef = { x: number; y: number };
 export type CoinDef = { x: number; y: number; value?: number };
+/** One optional warp pipe per level → monster arena challenge. */
+export type PipeDef = { x: number; y: number };
 export type LadderDef = { x: number; y: number; w: number; h: number };
 export type SeesawDef = { x: number; y: number; w: number };
 export type ConveyorDef = PlatformDef & { dir: -1 | 1; speed: number; id?: string };
@@ -95,5 +97,7 @@ export type LevelDef = {
   enemies: EnemyDef[];
   weapons: WeaponDef[];
   coins?: CoinDef[];
+  /** At most one pipe challenge per level. */
+  pipe?: PipeDef;
   checkpoints: CheckpointDef[];
 };

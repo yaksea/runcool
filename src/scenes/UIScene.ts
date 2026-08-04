@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ZH, weaponLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { SaveSystem, type InventoryWeapon, type WeaponType } from '../systems/SaveSystem';
+import { AdPromoOverlay } from '../ui/AdPromoOverlay';
 import type { GameScene } from './GameScene';
 
 type InventoryPayload = {
@@ -14,7 +15,9 @@ export class UIScene extends Phaser.Scene {
   private timeText!: Phaser.GameObjects.Text;
   private deathText!: Phaser.GameObjects.Text;
   private coinText!: Phaser.GameObjects.Text;
-  private vitalsText!: Phaser.GameObjects.Text;
+  private vitalsRoot!: Phaser.GameObjects.Container;
+  private hpPips: Phaser.GameObjects.Image[] = [];
+  private armorPips: Phaser.GameObjects.Image[] = [];
   private weaponText!: Phaser.GameObjects.Text;
   private skillText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
@@ -22,6 +25,8 @@ export class UIScene extends Phaser.Scene {
   private pauseLayer?: Phaser.GameObjects.Container;
   private bagLayer?: Phaser.GameObjects.Container;
   private winLayer?: Phaser.GameObjects.Container;
+  private adOverlay?: AdPromoOverlay;
+  private adHudBtn?: Phaser.GameObjects.Container;
 
   constructor() {
     super('UIScene');
@@ -44,10 +49,7 @@ export class UIScene extends Phaser.Scene {
     this.timeText = this.add.text(16, 48, `${ZH.time}: 0.0s`, style).setScrollFactor(0).setDepth(100);
     this.deathText = this.add.text(16, 84, `${ZH.deaths}: 0`, style).setScrollFactor(0).setDepth(100);
     this.coinText = this.add.text(16, 120, `${ZH.coins}: 0`, style).setScrollFactor(0).setDepth(100);
-    this.vitalsText = this.add
-      .text(16, 156, `${ZH.hp}: ❤❤❤  ${ZH.armor}: ◆◆◆`, style)
-      .setScrollFactor(0)
-      .setDepth(100);
+    this.buildVitalsBar();
     this.weaponText = this.add
       .text(16, 192, `${ZH.weapon}: ${ZH.weaponNone}`, style)
       .setScrollFactor(0)
@@ -60,6 +62,8 @@ export class UIScene extends Phaser.Scene {
       .text(16, 264, `${ZH.bag}: B · K`, style)
       .setScrollFactor(0)
       .setDepth(100);
+
+    this.makeAdHudButton();
 
     this.interactHintText = this.add
       .text(THEME.width / 2, THEME.height - 36, '', {
@@ -105,12 +109,7 @@ export class UIScene extends Phaser.Scene {
         this.timeText.setText(`${ZH.time}: ${(payload.timeMs / 1000).toFixed(1)}s`);
         this.deathText.setText(`${ZH.deaths}: ${payload.deaths}`);
         this.coinText.setText(`${ZH.coins}: ${payload.coins}`);
-        const hearts =
-          '❤'.repeat(Math.max(0, payload.hp)) + '♡'.repeat(Math.max(0, payload.maxHp - payload.hp));
-        const shields =
-          '◆'.repeat(Math.max(0, payload.armor)) +
-          '◇'.repeat(Math.max(0, payload.maxArmor - payload.armor));
-        this.vitalsText.setText(`${ZH.hp}: ${hearts}  ${ZH.armor}: ${shields}`);
+        this.refreshVitals(payload.hp, payload.maxHp, payload.armor, payload.maxArmor);
         this.weaponText.setText(`${ZH.weapon}: ${payload.weaponLabel}`);
         const cd = payload.skillCdMs > 0 ? ` (${(payload.skillCdMs / 1000).toFixed(1)}s)` : '';
         this.skillText.setText(`${ZH.skill}: ${payload.skillLabel}${cd}`);
@@ -141,6 +140,7 @@ export class UIScene extends Phaser.Scene {
       nextLevelId?: string;
       levelId: string;
     }) => this.showWin(payload));
+    game.events.on('adSkip', () => this.showAdSkip());
 
     this.events.on('shutdown', () => {
       game.events.off('hud');
@@ -149,6 +149,104 @@ export class UIScene extends Phaser.Scene {
       game.events.off('pause');
       game.events.off('inventory');
       game.events.off('win');
+      game.events.off('adSkip');
+      this.adOverlay?.destroy();
+      this.adOverlay = undefined;
+    });
+  }
+
+  private buildVitalsBar(): void {
+    const bg = this.add.rectangle(0, 0, 268, 34, 0xffffff, 0.8).setOrigin(0, 0.5);
+    const labelStyle = {
+      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+      fontSize: '18px',
+      color: THEME.uiText,
+    };
+
+    const rowY = 0;
+    const hpLabel = this.add.text(8, rowY, `${ZH.hp}`, labelStyle).setOrigin(0, 0.5);
+    this.hpPips = [];
+    const hx = 8 + hpLabel.width + 16;
+    for (let i = 0; i < 3; i++) {
+      const pip = this.add.image(hx + i * 22, rowY, 'hud_hp_on').setOrigin(0.5).setDisplaySize(18, 18);
+      this.hpPips.push(pip);
+    }
+
+    const armorLabel = this.add
+      .text(hx + 3 * 22 + 14, rowY, `${ZH.armor}`, labelStyle)
+      .setOrigin(0, 0.5);
+    this.armorPips = [];
+    const ax = armorLabel.x + armorLabel.width + 16;
+    for (let i = 0; i < 3; i++) {
+      const pip = this.add
+        .image(ax + i * 22, rowY, 'hud_armor_on')
+        .setOrigin(0.5)
+        .setDisplaySize(18, 18);
+      this.armorPips.push(pip);
+    }
+
+    bg.width = ax + 3 * 22 + 12;
+
+    this.vitalsRoot = this.add
+      .container(16, 172, [bg, hpLabel, ...this.hpPips, armorLabel, ...this.armorPips])
+      .setScrollFactor(0)
+      .setDepth(100);
+
+    this.refreshVitals(3, 3, 3, 3);
+  }
+
+  private refreshVitals(hp: number, maxHp: number, armor: number, maxArmor: number): void {
+    this.hpPips.forEach((pip, i) => {
+      if (i >= maxHp) {
+        pip.setVisible(false);
+        return;
+      }
+      pip.setVisible(true);
+      pip.setTexture(i < hp ? 'hud_hp_on' : 'hud_hp_off');
+    });
+    this.armorPips.forEach((pip, i) => {
+      if (i >= maxArmor) {
+        pip.setVisible(false);
+        return;
+      }
+      pip.setVisible(true);
+      pip.setTexture(i < armor ? 'hud_armor_on' : 'hud_armor_off');
+    });
+  }
+
+  private makeAdHudButton(): void {
+    const game = this.scene.get('GameScene') as GameScene;
+    const x = THEME.width - 88;
+    const y = 28;
+    const c = this.add.container(x, y).setDepth(100).setScrollFactor(0);
+    const bg = this.add
+      .rectangle(0, 0, 150, 36, THEME.button)
+      .setStrokeStyle(2, THEME.playerStroke)
+      .setInteractive({ useHandCursor: true });
+    const label = this.add
+      .text(0, 0, ZH.adSkip, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5);
+    bg.on('pointerover', () => bg.setFillStyle(THEME.buttonHover));
+    bg.on('pointerout', () => bg.setFillStyle(THEME.button));
+    bg.on('pointerdown', () => game.openAdSkip());
+    c.add([bg, label]);
+    this.adHudBtn = c;
+  }
+
+  private showAdSkip(): void {
+    if (this.adOverlay) return;
+    this.hidePause();
+    this.hideBag();
+    this.adHudBtn?.setVisible(false);
+    const game = this.scene.get('GameScene') as GameScene;
+    this.adOverlay = new AdPromoOverlay(this, () => {
+      this.adOverlay = undefined;
+      this.adHudBtn?.setVisible(true);
+      game.completeAdSkip();
     });
   }
 
@@ -201,12 +299,24 @@ export class UIScene extends Phaser.Scene {
         })
         .setOrigin(0.5),
     );
-    this.makeBtn(c, THEME.width / 2, 240, ZH.resume, () => game.togglePause());
-    this.makeBtn(c, THEME.width / 2, 300, ZH.restart, () => {
+    this.makeBtn(c, THEME.width / 2, 220, ZH.resume, () => game.togglePause());
+    this.makeBtn(c, THEME.width / 2, 275, ZH.adSkip, () => game.openAdSkip());
+    this.makeBtn(c, THEME.width / 2, 330, ZH.restart, () => {
       this.hidePause();
       game.restartLevel();
     });
-    this.makeBtn(c, THEME.width / 2, 360, ZH.backToMenu, () => game.goMenu());
+    this.makeBtn(c, THEME.width / 2, 385, ZH.backToMenu, () => game.goMenu());
+    c.add(
+      this.add
+        .text(THEME.width / 2, 445, ZH.adSkipHint, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '13px',
+          color: '#dde8f0',
+          align: 'center',
+          wordWrap: { width: 520 },
+        })
+        .setOrigin(0.5),
+    );
     this.pauseLayer = c;
   }
 
@@ -353,6 +463,7 @@ export class UIScene extends Phaser.Scene {
   }): void {
     if (this.winLayer) return;
     this.hideBag();
+    this.adHudBtn?.setVisible(false);
     const game = this.scene.get('GameScene') as GameScene;
     const c = this.add.container(0, 0).setDepth(220).setScrollFactor(0);
     c.add(this.add.rectangle(THEME.width / 2, THEME.height / 2, THEME.width, THEME.height, 0x000000, 0.5));

@@ -18,6 +18,12 @@ import { ZH, skillLabel, weaponLabel, weaponPickupToast } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { WEAPON_STATS } from '../game/weapons';
 import { shapeById, skillById, skinById } from '../game/shopCatalog';
+import {
+  PIPE_ARENA,
+  PIPE_ARENA_REWARD,
+  arenaOriginX,
+  pipeArenaPack,
+} from '../game/pipeArena';
 import { SaveSystem, type WeaponType } from '../systems/SaveSystem';
 import { SoundSystem } from '../systems/SoundSystem';
 
@@ -40,6 +46,14 @@ export class GameScene extends Phaser.Scene {
   private projectiles!: Phaser.Physics.Arcade.Group;
   private hazardProjectiles!: Phaser.Physics.Arcade.Group;
   private checkpointSprites: Phaser.GameObjects.Sprite[] = [];
+  /** Warp pipe → monster arena (one per level). */
+  private pipeSprite?: Phaser.Physics.Arcade.Sprite;
+  private pipeState: 'available' | 'active' | 'done' = 'available';
+  private arenaEnemies: Enemy[] = [];
+  private pipeReturn = { x: 0, y: 0 };
+  private arenaOrigin = { x: 0, y: 0 };
+  private arenaVeil?: Phaser.GameObjects.Rectangle;
+  private overworldBounds = { w: 0, h: 0 };
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keyA!: Phaser.Input.Keyboard.Key;
@@ -63,6 +77,7 @@ export class GameScene extends Phaser.Scene {
   private runActive = true;
   private paused = false;
   private inventoryOpen = false;
+  private adOpen = false;
   private dying = false;
   private ladders: LadderDef[] = [];
   private seesaws: Seesaw[] = [];
@@ -114,9 +129,14 @@ export class GameScene extends Phaser.Scene {
     this.timedPlatforms = [];
     this.conveyors = [];
     this.checkpointFloorIds = null;
+    this.pipeSprite = undefined;
+    this.pipeState = 'available';
+    this.arenaEnemies = [];
+    this.arenaVeil = undefined;
     this.runActive = true;
     this.paused = false;
     this.inventoryOpen = false;
+    this.adOpen = false;
     this.dying = false;
     this.skillReadyAt = 0;
     this.stompSuppressUntil = 0;
@@ -135,7 +155,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.physics.world.setBounds(0, 0, this.level.worldWidth, this.level.worldHeight);
+    this.overworldBounds = { w: this.level.worldWidth, h: this.level.worldHeight };
+    const hasPipe = !!this.level.pipe;
+    this.arenaOrigin = { x: arenaOriginX(this.level.worldWidth), y: 40 };
+    const worldW = hasPipe
+      ? this.arenaOrigin.x + PIPE_ARENA.width + 40
+      : this.level.worldWidth;
+    const worldH = hasPipe
+      ? Math.max(this.level.worldHeight, this.arenaOrigin.y + PIPE_ARENA.height + 40)
+      : this.level.worldHeight;
+    this.physics.world.setBounds(0, 0, worldW, worldH);
     this.cameras.main.setBounds(0, 0, this.level.worldWidth, this.level.worldHeight);
     this.drawParallax();
 
@@ -164,6 +193,7 @@ export class GameScene extends Phaser.Scene {
     this.buildPads();
     this.buildCheckpoints();
     this.buildFinish();
+    this.buildPipeAndArena();
     this.spawnPlayer();
     this.spawnEnemies();
     this.spawnWeapons();
@@ -241,6 +271,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    if (this.adOpen) return;
+
     if (this.runActive && !this.dying) {
       if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
         this.toggleInventory();
@@ -280,7 +312,7 @@ export class GameScene extends Phaser.Scene {
       this.tryInteract();
     }
 
-    const hint = this.interact?.nearestHint(this.player) ?? null;
+    const hint = this.pipeNearHint() ?? this.interact?.nearestHint(this.player) ?? null;
     this.events.emit('interactHint', hint?.hint ?? '');
 
     this.enemies.forEach((e) => e.update(this.player));
@@ -292,12 +324,13 @@ export class GameScene extends Phaser.Scene {
     this.fans.forEach((f) => f.apply(this.player, delta));
     this.crumbles.forEach((c) => c.update(this.player, delta));
     this.bumpers.forEach((b) => b.tryHit(this.player));
-    this.portals?.tryTeleport(this.player);
+    if (this.pipeState !== 'active') this.portals?.tryTeleport(this.player);
     this.geysers.forEach((g) => g.update(this.player));
     this.timedPlatforms.forEach((t) => t.update());
     this.applyConveyors(delta);
     this.checkFallDeath();
-    this.checkCheckpoints();
+    if (this.pipeState === 'active') this.checkPipeArenaClear();
+    if (this.pipeState !== 'active') this.checkCheckpoints();
     this.events.emit('hud', this.getHudPayload());
   }
 
@@ -618,6 +651,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryInteract(): void {
+    if (this.tryEnterPipe()) return;
     if (!this.interact) return;
     const result = this.interact.tryInteract(this.player);
     if (result === 'break') {
@@ -778,6 +812,191 @@ export class GameScene extends Phaser.Scene {
     const body = this.finish.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     body.setSize(30, 50);
+  }
+
+  private buildPipeAndArena(): void {
+    const def = this.level.pipe;
+    if (!def) return;
+
+    this.pipeSprite = this.physics.add.sprite(def.x, def.y, 'pipe');
+    this.pipeSprite.setOrigin(0.5, 1);
+    this.pipeSprite.setDepth(7);
+    const pBody = this.pipeSprite.body as Phaser.Physics.Arcade.Body;
+    pBody.setAllowGravity(false);
+    pBody.setImmovable(true);
+    pBody.setSize(40, 56);
+    pBody.setOffset(4, 8);
+
+    // Arena room to the right of the overworld.
+    const ox = this.arenaOrigin.x;
+    const oy = this.arenaOrigin.y;
+    const aw = PIPE_ARENA.width;
+    const ah = PIPE_ARENA.height;
+    const floorY = oy + ah - PIPE_ARENA.floorH;
+
+    const addWall = (x: number, y: number, w: number, h: number, tint = 0x5b2c6f) => {
+      const wall = this.platforms.create(x + w / 2, y + h / 2, 'platform') as Phaser.Physics.Arcade.Sprite;
+      wall.setDisplaySize(w, h);
+      wall.setTint(tint);
+      wall.refreshBody();
+    };
+
+    addWall(ox, floorY, aw, PIPE_ARENA.floorH, 0x4a235a);
+    addWall(ox, oy, 36, ah, 0x4a235a);
+    addWall(ox + aw - 36, oy, 36, ah, 0x4a235a);
+    addWall(ox, oy, aw, 28, 0x4a235a);
+    // Mid platforms for vertical play
+    addWall(ox + 120, floorY - 120, 180, 22, 0x6c3483);
+    addWall(ox + aw - 300, floorY - 120, 180, 22, 0x6c3483);
+    addWall(ox + aw / 2 - 90, floorY - 220, 180, 22, 0x6c3483);
+
+    // Dim veil (camera-fixed) toggled when inside.
+    this.arenaVeil = this.add
+      .rectangle(THEME.width / 2, THEME.height / 2, THEME.width, THEME.height, 0x3b0a57, 0.28)
+      .setScrollFactor(0)
+      .setDepth(5)
+      .setVisible(false);
+  }
+
+  private pipeNearHint(): { hint: string } | null {
+    if (!this.pipeSprite || this.pipeState === 'active') return null;
+    if (!this.isNearPipe()) return null;
+    return { hint: this.pipeState === 'available' ? ZH.pipeHint : ZH.pipeSealed };
+  }
+
+  private isNearPipe(): boolean {
+    if (!this.pipeSprite?.active) return false;
+    const dx = Math.abs(this.player.sprite.x - this.pipeSprite.x);
+    const dy = Math.abs(this.player.sprite.y - (this.pipeSprite.y - 40));
+    return dx < 42 && dy < 56;
+  }
+
+  private tryEnterPipe(): boolean {
+    if (!this.pipeSprite || this.pipeState !== 'available') {
+      if (this.pipeState === 'done' && this.isNearPipe()) {
+        this.events.emit('toast', ZH.pipeSealed);
+        return true;
+      }
+      return false;
+    }
+    if (!this.isNearPipe()) return false;
+
+    this.pipeReturn = {
+      x: this.pipeSprite.x + 56,
+      y: this.pipeSprite.y - 48,
+    };
+    this.pipeState = 'active';
+    this.cameras.main.flash(280, 90, 40, 140);
+    this.arenaVeil?.setVisible(true);
+
+    const ox = this.arenaOrigin.x;
+    const oy = this.arenaOrigin.y;
+    this.cameras.main.setBounds(ox, oy, PIPE_ARENA.width, PIPE_ARENA.height);
+
+    const spawnX = ox + PIPE_ARENA.width / 2;
+    const spawnY = oy + PIPE_ARENA.height - PIPE_ARENA.floorH - 40;
+    this.player.sprite.setPosition(spawnX, spawnY);
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body;
+    body.reset(spawnX, spawnY);
+    body.setVelocity(0, 0);
+    this.player.makeInvincible(this.time.now, 900);
+    this.portals?.suppress(2000);
+
+    this.spawnArenaEnemies();
+    this.events.emit('toast', ZH.pipeEnter);
+    this.events.emit('hud', this.getHudPayload());
+    return true;
+  }
+
+  private spawnArenaEnemies(): void {
+    this.clearArenaEnemies();
+    const ox = this.arenaOrigin.x;
+    const floorY = this.arenaOrigin.y + PIPE_ARENA.height - PIPE_ARENA.floorH;
+    const packs = pipeArenaPack(this.level.index);
+    let slot = 0;
+    for (const pack of packs) {
+      for (let i = 0; i < pack.count; i++) {
+        const flying = pack.type === 'floater' || pack.type === 'bat' || pack.type === 'ghost';
+        const col = slot % 6;
+        const row = Math.floor(slot / 6);
+        const x = ox + 140 + col * 110 + (row % 2) * 30;
+        const y = flying ? floorY - 160 - row * 50 : floorY - 36 - (row % 2) * 20;
+        const enemy = new Enemy(
+          this,
+          { type: pack.type, x, y, patrol: 70 + (slot % 3) * 20 },
+          (fx, fy, dir) => {
+            fireProjectile(this, this.hazardProjectiles, {
+              x: fx,
+              y: fy,
+              dir,
+              key: 'hazard_shot',
+              speed: 260,
+              dealsHit: false,
+              lifeMs: 2000,
+            });
+          },
+        );
+        enemy.sprite.setData('arena', true);
+        this.enemies.push(enemy);
+        this.arenaEnemies.push(enemy);
+        this.enemiesGroup.add(enemy.sprite);
+        if (!flying) {
+          this.physics.add.collider(enemy.sprite, this.platforms);
+          this.physics.add.collider(enemy.sprite, this.movingGroup);
+        }
+        this.physics.add.overlap(this.player.sprite, enemy.sprite, () => this.onTouchEnemy(enemy));
+        slot += 1;
+      }
+    }
+  }
+
+  private clearArenaEnemies(): void {
+    for (const e of this.arenaEnemies) {
+      if (!e.dead) e.destroy();
+    }
+    this.enemies = this.enemies.filter((e) => e.sprite.getData('arena') !== true);
+    this.arenaEnemies = [];
+  }
+
+  private checkPipeArenaClear(): void {
+    if (this.pipeState !== 'active' || this.dying) return;
+    if (this.arenaEnemies.length === 0) return;
+    if (this.arenaEnemies.some((e) => !e.dead)) return;
+
+    this.pipeState = 'done';
+    SaveSystem.addCoins(PIPE_ARENA_REWARD);
+    this.events.emit('toast', ZH.pipeClear);
+    this.sealPipe();
+    this.exitPipeRealm(false);
+    this.events.emit('hud', this.getHudPayload());
+  }
+
+  private failPipeChallenge(): void {
+    if (this.pipeState !== 'active') return;
+    this.pipeState = 'done';
+    this.clearArenaEnemies();
+    this.sealPipe();
+    this.exitPipeRealm(true);
+    this.events.emit('toast', ZH.pipeFail);
+  }
+
+  private sealPipe(): void {
+    if (!this.pipeSprite) return;
+    this.pipeSprite.setTexture('pipe_sealed');
+  }
+
+  private exitPipeRealm(fromDeath: boolean): void {
+    this.arenaVeil?.setVisible(false);
+    this.cameras.main.setBounds(0, 0, this.overworldBounds.w, this.overworldBounds.h);
+    this.cameras.main.flash(220, 255, 255, 255);
+
+    const x = this.pipeReturn.x;
+    const y = this.pipeReturn.y;
+    this.player.respawn(x, y);
+    this.player.makeInvincible(this.time.now, fromDeath ? 1200 : 800);
+    this.portals?.suppress(1500);
+    this.cameras.main.centerOn(x, y);
+    this.events.emit('hud', this.getHudPayload());
   }
 
   private spawnPlayer(): void {
@@ -1043,6 +1262,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private checkFallDeath(): void {
+    if (this.pipeState === 'active') {
+      const floor = this.arenaOrigin.y + PIPE_ARENA.height - 8;
+      if (this.player.sprite.y > floor) this.killPlayer();
+      return;
+    }
     if (this.player.sprite.y > this.level.worldHeight - 20) {
       // Void fall: instant checkpoint respawn (full vitals restore).
       this.killPlayer();
@@ -1084,6 +1308,19 @@ export class GameScene extends Phaser.Scene {
 
   private killPlayer(): void {
     if (!this.runActive || this.dying) return;
+
+    // Death inside pipe arena: eject + seal (no retry this run).
+    if (this.pipeState === 'active') {
+      this.dying = true;
+      this.deaths += 1;
+      this.cameras.main.flash(150, 255, 255, 255);
+      this.time.delayedCall(350, () => {
+        this.failPipeChallenge();
+        this.dying = false;
+      });
+      return;
+    }
+
     this.dying = true;
     this.deaths += 1;
     this.cameras.main.flash(150, 255, 255, 255);
@@ -1162,7 +1399,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   togglePause(): void {
-    if (this.dying || this.inventoryOpen) return;
+    if (this.dying || this.inventoryOpen || this.adOpen) return;
     if (!this.runActive && !this.paused) return;
     this.paused = !this.paused;
     if (this.paused) {
@@ -1174,8 +1411,54 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Open self-promo ad overlay; on finish, grant remaining coins and clear the level. */
+  openAdSkip(): void {
+    if (!this.runActive || this.dying || this.adOpen || this.pipeState === 'active') return;
+    if (this.inventoryOpen) {
+      this.inventoryOpen = false;
+      this.events.emit('inventory', { open: false });
+    }
+    if (this.paused) {
+      this.paused = false;
+      this.events.emit('pause', false);
+    }
+    this.adOpen = true;
+    this.physics.pause();
+    this.events.emit('adSkip');
+  }
+
+  /** Called after the 10s promo finishes: collect leftover coins, teleport, win. */
+  completeAdSkip(): void {
+    if (!this.adOpen || !this.runActive || this.dying) {
+      this.adOpen = false;
+      return;
+    }
+    this.adOpen = false;
+
+    let gained = 0;
+    for (const coin of this.coins) {
+      gained += coin.collect();
+    }
+    if (gained > 0) {
+      SaveSystem.addCoins(gained);
+      this.events.emit('toast', ZH.adSkipCoins(gained));
+    }
+
+    const fx = this.level.finish.x;
+    const fy = this.level.finish.y - 24;
+    this.player.sprite.setPosition(fx, fy);
+    const body = this.player.sprite.body as Phaser.Physics.Arcade.Body | null;
+    if (body) {
+      body.reset(fx, fy);
+      body.setVelocity(0, 0);
+    }
+    this.cameras.main.centerOn(fx, fy);
+    this.events.emit('hud', this.getHudPayload());
+    this.winLevel();
+  }
+
   toggleInventory(): void {
-    if (this.dying || this.paused) return;
+    if (this.dying || this.paused || this.adOpen) return;
     if (!this.runActive && !this.inventoryOpen) return;
     this.inventoryOpen = !this.inventoryOpen;
     if (this.inventoryOpen) {

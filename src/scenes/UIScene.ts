@@ -23,6 +23,10 @@ export class UIScene extends Phaser.Scene {
   private specialText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private interactHintText!: Phaser.GameObjects.Text;
+  private tutorialLayer?: Phaser.GameObjects.Container;
+  private tutorialTitle!: Phaser.GameObjects.Text;
+  private tutorialBody!: Phaser.GameObjects.Text;
+  private isTutorialLevel = false;
   private pauseLayer?: Phaser.GameObjects.Container;
   private bagLayer?: Phaser.GameObjects.Container;
   private winLayer?: Phaser.GameObjects.Container;
@@ -33,7 +37,8 @@ export class UIScene extends Phaser.Scene {
     super('UIScene');
   }
 
-  create(data: { levelIndex: number }): void {
+  create(data: { levelIndex: number; isTutorial?: boolean }): void {
+    this.isTutorialLevel = data.isTutorial === true;
     const style = {
       fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
       fontSize: '18px',
@@ -42,10 +47,9 @@ export class UIScene extends Phaser.Scene {
       padding: { x: 10, y: 6 },
     };
 
-    this.add
-      .text(16, 12, ZH.level(data.levelIndex), style)
-      .setScrollFactor(0)
-      .setDepth(100);
+    const levelName =
+      this.isTutorialLevel || data.levelIndex === 0 ? ZH.tutorialLevel : ZH.level(data.levelIndex);
+    this.add.text(16, 12, levelName, style).setScrollFactor(0).setDepth(100);
 
     this.timeText = this.add.text(16, 48, `${ZH.time}: 0.0s`, style).setScrollFactor(0).setDepth(100);
     this.deathText = this.add.text(16, 84, `${ZH.deaths}: 0`, style).setScrollFactor(0).setDepth(100);
@@ -64,7 +68,7 @@ export class UIScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(100);
     this.add
-      .text(16, 300, `${ZH.bag}: B · K · N`, style)
+      .text(16, 300, `${ZH.bag}: B · K · M · N`, style)
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -95,6 +99,8 @@ export class UIScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(120)
       .setAlpha(0);
+
+    this.buildTutorialPanel();
 
     const game = this.scene.get('GameScene') as GameScene;
     game.events.on(
@@ -134,6 +140,12 @@ export class UIScene extends Phaser.Scene {
         this.interactHintText.setAlpha(0);
       }
     });
+    game.events.on('tutorialTip', (tip: { title: string; body: string } | null) => {
+      this.showTutorialTip(tip);
+    });
+    game.events.on('tutorialAssistState', (on: boolean) => {
+      if (!on) this.showTutorialTip(null);
+    });
     game.events.on('pause', (paused: boolean) => {
       if (paused) this.showPause();
       else this.hidePause();
@@ -156,6 +168,8 @@ export class UIScene extends Phaser.Scene {
       game.events.off('hud');
       game.events.off('toast');
       game.events.off('interactHint');
+      game.events.off('tutorialTip');
+      game.events.off('tutorialAssistState');
       game.events.off('pause');
       game.events.off('inventory');
       game.events.off('win');
@@ -163,6 +177,65 @@ export class UIScene extends Phaser.Scene {
       this.adOverlay?.destroy();
       this.adOverlay = undefined;
     });
+  }
+
+  private buildTutorialPanel(): void {
+    const cx = THEME.width / 2;
+    const cy = THEME.height - 96;
+    const bg = this.add
+      .rectangle(0, 0, 620, 88, 0x1f2d3d, 0.88)
+      .setStrokeStyle(2, 0x5dade2);
+    this.tutorialTitle = this.add
+      .text(-290, -28, '', {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#f7dc6f',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0, 0.5);
+    this.tutorialBody = this.add
+      .text(-290, 8, '', {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#ffffff',
+        wordWrap: { width: 430 },
+      })
+      .setOrigin(0, 0.5);
+
+    const dismissBg = this.add
+      .rectangle(230, 0, 130, 36, THEME.button)
+      .setStrokeStyle(2, THEME.playerStroke)
+      .setInteractive({ useHandCursor: true });
+    const dismissLabel = this.add
+      .text(230, 0, ZH.tutorialDismiss, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '13px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5);
+    dismissBg.on('pointerover', () => dismissBg.setFillStyle(THEME.buttonHover));
+    dismissBg.on('pointerout', () => dismissBg.setFillStyle(THEME.button));
+    dismissBg.on('pointerdown', () => {
+      const game = this.scene.get('GameScene') as GameScene;
+      game.setTutorialAssist(false);
+    });
+
+    this.tutorialLayer = this.add
+      .container(cx, cy, [bg, this.tutorialTitle, this.tutorialBody, dismissBg, dismissLabel])
+      .setScrollFactor(0)
+      .setDepth(115)
+      .setVisible(false);
+  }
+
+  private showTutorialTip(tip: { title: string; body: string } | null): void {
+    if (!this.tutorialLayer) return;
+    if (!tip) {
+      this.tutorialLayer.setVisible(false);
+      return;
+    }
+    this.tutorialTitle.setText(tip.title);
+    this.tutorialBody.setText(tip.body);
+    this.tutorialLayer.setVisible(true);
   }
 
   private buildVitalsBar(): void {
@@ -309,16 +382,32 @@ export class UIScene extends Phaser.Scene {
         })
         .setOrigin(0.5),
     );
-    this.makeBtn(c, THEME.width / 2, 220, ZH.resume, () => game.togglePause());
-    this.makeBtn(c, THEME.width / 2, 275, ZH.adSkip, () => game.openAdSkip());
-    this.makeBtn(c, THEME.width / 2, 330, ZH.restart, () => {
+    this.makeBtn(c, THEME.width / 2, 210, ZH.resume, () => game.togglePause());
+    this.makeBtn(c, THEME.width / 2, 260, ZH.adSkip, () => game.openAdSkip());
+    this.makeBtn(c, THEME.width / 2, 310, ZH.restart, () => {
       this.hidePause();
       game.restartLevel();
     });
-    this.makeBtn(c, THEME.width / 2, 385, ZH.backToMenu, () => game.goMenu());
+    if (this.isTutorialLevel) {
+      const assistOn = SaveSystem.load().tutorialAssist !== false;
+      this.makeBtn(
+        c,
+        THEME.width / 2,
+        360,
+        assistOn ? ZH.tutorialDismiss : ZH.tutorialEnable,
+        () => {
+          game.setTutorialAssist(!assistOn);
+          this.hidePause();
+          game.togglePause();
+        },
+      );
+      this.makeBtn(c, THEME.width / 2, 410, ZH.backToMenu, () => game.goMenu());
+    } else {
+      this.makeBtn(c, THEME.width / 2, 360, ZH.backToMenu, () => game.goMenu());
+    }
     c.add(
       this.add
-        .text(THEME.width / 2, 445, ZH.adSkipHint, {
+        .text(THEME.width / 2, this.isTutorialLevel ? 470 : 430, ZH.adSkipHint, {
           fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
           fontSize: '13px',
           color: '#dde8f0',

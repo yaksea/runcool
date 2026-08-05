@@ -33,10 +33,19 @@ export const level1: LevelDef = {
     { x: 640, y: 200, w: 40, h: 160 },
   ],
   conveyors: [{ x: 920, y: 520, w: 180, h: 28, dir: 1, speed: 140 }],
-  crumbles: [{ x: 780, y: 460, w: 90, h: 22 }],
+  crumbles: [{ x: 820, y: 480, w: 90, h: 22 }],
   spikes: [
-    { x: 740, y: 480, count: 2 },
-    { x: 1280, y: 400, count: 2 },
+    { x: 720, y: 480, count: 4 },
+    { x: 1240, y: 400, count: 4 },
+    { x: 900, y: 240, count: 3 },
+  ],
+  flameVents: [
+    { x: 1000, y: 440, intervalMs: 700, height: 145 },
+    { x: 1480, y: 360, intervalMs: 650, height: 140 },
+  ],
+  acidPools: [
+    { x: 540, y: 520, w: 88 },
+    { x: 1180, y: 280, w: 80 },
   ],
   pads: [{ x: 1120, y: 256 }],
   enemies: [

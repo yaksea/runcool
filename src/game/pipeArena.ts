@@ -1,13 +1,17 @@
 import type { EnemyType } from '../levels/types';
 
-/** Fixed reward for clearing a pipe arena. */
+/** Default reward for clearing a pipe arena. */
 export const PIPE_ARENA_REWARD = 50;
+/** Last-level pipe arena reward. */
+export const PIPE_ARENA_FINAL_REWARD = 1000;
 
 /** Invincibility after entering the pipe realm. */
 export const PIPE_ENTER_INVINCIBLE_MS = 5000;
 
-/** Hard cap on monsters spawned inside a pipe arena. */
+/** Hard cap on monsters spawned inside a normal pipe arena. */
 export const PIPE_ARENA_MAX_ENEMIES = 40;
+/** Last-level pipe arena monster count. */
+export const PIPE_ARENA_FINAL_MAX_ENEMIES = 100;
 
 /** Weapon hits to kill each arena monster (3 shots). */
 export const PIPE_ARENA_HITS = 3;
@@ -28,24 +32,62 @@ export const PIPE_ARENA = {
 
 export type ArenaPack = { type: EnemyType; count: number };
 
+/** True for the campaign finale pipe (level index 12). */
+export function isFinalPipeArena(levelIndex: number): boolean {
+  return levelIndex >= 12;
+}
+
+export function pipeArenaEnemyCap(levelIndex: number): number {
+  return isFinalPipeArena(levelIndex)
+    ? PIPE_ARENA_FINAL_MAX_ENEMIES
+    : PIPE_ARENA_MAX_ENEMIES;
+}
+
+export function pipeArenaReward(levelIndex: number): number {
+  return isFinalPipeArena(levelIndex) ? PIPE_ARENA_FINAL_REWARD : PIPE_ARENA_REWARD;
+}
+
 /**
- * Per-level monster packs (always fills to PIPE_ARENA_MAX_ENEMIES).
+ * Per-level monster packs (fills to the level's enemy cap).
  * Later levels unlock tougher species; leftovers redistribute to unlocked types.
+ * Tutorial (index 0) gets a fixed gentle pack of 5.
+ * Final level (12): 100 mixed monsters.
  */
 export function pipeArenaPack(levelIndex: number): ArenaPack[] {
-  const packs: Array<ArenaPack & { minLevel: number }> = [
-    { type: 'slime', count: 8, minLevel: 1 },
-    { type: 'hopper', count: 6, minLevel: 1 },
-    { type: 'floater', count: 5, minLevel: 2 },
-    { type: 'chaser', count: 5, minLevel: 3 },
-    { type: 'bat', count: 4, minLevel: 4 },
-    { type: 'roller', count: 4, minLevel: 4 },
-    { type: 'ghost', count: 4, minLevel: 5 },
-    { type: 'spitter', count: 3, minLevel: 5 },
-    { type: 'tank', count: 2, minLevel: 6 },
-  ];
+  if (levelIndex <= 0) {
+    return [
+      { type: 'slime', count: 2 },
+      { type: 'hopper', count: 2 },
+      { type: 'floater', count: 1 },
+    ];
+  }
 
-  let remaining = PIPE_ARENA_MAX_ENEMIES;
+  const cap = pipeArenaEnemyCap(levelIndex);
+  const packs: Array<ArenaPack & { minLevel: number }> = isFinalPipeArena(levelIndex)
+    ? [
+        { type: 'slime', count: 16, minLevel: 1 },
+        { type: 'hopper', count: 14, minLevel: 1 },
+        { type: 'floater', count: 12, minLevel: 2 },
+        { type: 'chaser', count: 12, minLevel: 3 },
+        { type: 'bat', count: 10, minLevel: 4 },
+        { type: 'roller', count: 10, minLevel: 4 },
+        { type: 'ghost', count: 10, minLevel: 5 },
+        { type: 'spitter', count: 8, minLevel: 5 },
+        { type: 'tank', count: 8, minLevel: 6 },
+      ]
+    : [
+        { type: 'slime', count: 8, minLevel: 1 },
+        { type: 'hopper', count: 6, minLevel: 1 },
+        { type: 'floater', count: 5, minLevel: 2 },
+        { type: 'chaser', count: 5, minLevel: 3 },
+        { type: 'bat', count: 4, minLevel: 4 },
+        { type: 'roller', count: 4, minLevel: 4 },
+        { type: 'ghost', count: 4, minLevel: 5 },
+        { type: 'spitter', count: 3, minLevel: 5 },
+        { type: 'tank', count: 2, minLevel: 6 },
+      ];
+
+  let remaining = cap;
   const out: ArenaPack[] = [];
   for (const p of packs) {
     if (levelIndex < p.minLevel || remaining <= 0) continue;

@@ -64,7 +64,7 @@ export const level6: LevelDef = {
     { id: 'gate6a', x: 200, y: 80, w: 26, h: 90 },
   ],
   levers: [
-    { x: 400, y: 160, targetId: 'gate6a', targetType: 'gate' },
+    { x: 160, y: 180, targetId: 'gate6a', targetType: 'gate' },
     { x: 860, y: 520, targetId: 'cv6a', targetType: 'conveyor' },
     { x: 1740, y: 400, targetId: 'fan6a', targetType: 'fan' },
   ],
@@ -78,14 +78,28 @@ export const level6: LevelDef = {
     { x: 1400, y: 220, w: 90, h: 22 },
   ],
   bumpers: [
-    { x: 1000, y: 510, dir: 1 },
-    { x: 1800, y: 210, dir: -1 },
+    { x: 820, y: 480, dir: 1 },
+    { x: 2160, y: 260, dir: -1 },
   ],
   spikes: [
-    { x: 920, y: 480, count: 2 },
-    { x: 1600, y: 500, count: 2 },
-    { x: 1900, y: 220, count: 2 },
-    { x: 500, y: 180, count: 2 },
+    { x: 920, y: 480, count: 3 },
+    { x: 1540, y: 500, count: 3 },
+    { x: 1880, y: 220, count: 3 },
+    { x: 480, y: 180, count: 3 },
+    { x: 2200, y: 400, count: 3 },
+    { x: 1300, y: 220, count: 3 },
+  ],
+  flameVents: [
+    { x: 1100, y: 520, intervalMs: 700, height: 145 },
+    { x: 1860, y: 440, intervalMs: 650, height: 150 },
+    { x: 1000, y: 220, intervalMs: 700, height: 130 },
+    { x: 2100, y: 400, intervalMs: 750, height: 135 },
+  ],
+  acidPools: [
+    { x: 620, y: 520, w: 84 },
+    { x: 1660, y: 500, w: 88 },
+    { x: 800, y: 180, w: 80 },
+    { x: 1580, y: 240, w: 86 },
   ],
   pads: [
     { x: 1100, y: 496 },

@@ -36,6 +36,10 @@ export type CrumbleDef = PlatformDef & { shakeMs?: number; goneMs?: number };
 export type BumperDef = { x: number; y: number; dir: -1 | 1 };
 export type PortalDef = { id: string; x: number; y: number; pairId: string };
 export type GeyserDef = { x: number; y: number; intervalMs?: number; force?: number };
+/** Periodic fire column — damages player and enemies. */
+export type FlameVentDef = { x: number; y: number; intervalMs?: number; height?: number };
+/** Always-on acid puddle — damages player and enemies. */
+export type AcidPoolDef = { x: number; y: number; w?: number };
 export type TimedPlatformDef = PlatformDef & {
   onMs: number;
   offMs: number;
@@ -88,6 +92,8 @@ export type LevelDef = {
   bumpers?: BumperDef[];
   portals?: PortalDef[];
   geysers?: GeyserDef[];
+  flameVents?: FlameVentDef[];
+  acidPools?: AcidPoolDef[];
   timedPlatforms?: TimedPlatformDef[];
   gates?: GateDef[];
   levers?: LeverDef[];

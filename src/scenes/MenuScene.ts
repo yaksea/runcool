@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ZH, shapeLabel, skinLabel, skillDesc, skillLabel, specialDesc, specialLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
-import { LEVELS } from '../levels';
+import { isTutorialLevel, LEVELS } from '../levels';
 import {
   MISSILE_MAX_LEVEL,
   MISSILE_SALVO_MAX_LEVEL,
@@ -16,13 +16,13 @@ import {
   missileCooldownMs,
   missileSalvoCount,
   orbitCapacity,
+  orbitShieldsUnlocked,
   shapeById,
   skinById,
 } from '../game/shopCatalog';
 import {
   SaveSystem,
   type EquippedSkill,
-  type EquippedSpecial,
   type ShapeId,
   type SkinId,
   type SkillId,
@@ -32,6 +32,7 @@ import { SoundSystem } from '../systems/SoundSystem';
 
 export class MenuScene extends Phaser.Scene {
   private mode: 'main' | 'levels' | 'confirmClear' | 'shop' = 'main';
+  private shopTab: 'look' | 'skills' | 'specials' = 'look';
   private shopMsg = '';
 
   constructor() {
@@ -40,10 +41,18 @@ export class MenuScene extends Phaser.Scene {
 
   create(): void {
     this.mode = 'main';
+    this.shopTab = 'look';
     this.shopMsg = '';
     this.drawBackground();
     this.renderMain();
     this.input.once('pointerdown', () => SoundSystem.unlock());
+  }
+
+  private setHeroVisible(visible: boolean): void {
+    const hero = this.children.list.find(
+      (c) => (c as Phaser.GameObjects.GameObject & { getData?: (k: string) => unknown }).getData?.('hero'),
+    ) as Phaser.GameObjects.Image | undefined;
+    if (hero) hero.setVisible(visible);
   }
 
   private drawBackground(): void {
@@ -138,6 +147,7 @@ export class MenuScene extends Phaser.Scene {
 
   private renderMain(): void {
     this.clearUi();
+    this.setHeroVisible(true);
     this.refreshHeroLook();
     const { width, height } = this.scale;
     const save = SaveSystem.load();
@@ -208,6 +218,7 @@ export class MenuScene extends Phaser.Scene {
 
   private renderLevels(): void {
     this.clearUi();
+    this.setHeroVisible(false);
     const { width } = this.scale;
     const save = SaveSystem.load();
 
@@ -225,18 +236,17 @@ export class MenuScene extends Phaser.Scene {
       const unlocked = level.index <= save.unlockedMax;
       const record = save.levels[level.id];
       const stars = record ? ZH.stars(record.bestStars) : ZH.stars(0);
-      const label = unlocked
-        ? `${ZH.level(level.index)} ${stars}`
-        : `${ZH.level(level.index)} ${ZH.locked}`;
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = width / 2 - 140 + col * 280;
-      const y = 110 + row * 58;
+      const name = isTutorialLevel(level) ? ZH.tutorialLevel : ZH.level(level.index);
+      const label = unlocked ? `${name} ${stars}` : `${name} ${ZH.locked}`;
+      const col = i % 3;
+      const row = Math.floor(i / 3);
+      const x = width / 2 - 220 + col * 220;
+      const y = 100 + row * 52;
       if (unlocked) {
         this.makeButton(x, y, label, () => {
           SaveSystem.startRun(level.id);
           this.scene.start('GameScene', { levelId: level.id, continueRun: false });
-        }, 250, 44);
+        }, 200, 40);
       } else {
         const t = this.add
           .text(x, y, label, {
@@ -249,7 +259,7 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    this.makeButton(width / 2, 500, ZH.back, () => {
+    this.makeButton(width / 2, 520, ZH.back, () => {
       this.mode = 'main';
       this.renderMain();
     });
@@ -257,257 +267,298 @@ export class MenuScene extends Phaser.Scene {
 
   private renderShop(): void {
     this.clearUi();
-    this.refreshHeroLook();
+    this.setHeroVisible(false);
     const { width } = this.scale;
     const save = SaveSystem.load();
 
-    const title = this.add
-      .text(width / 2, 28, ZH.shop, {
-        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '28px',
-        color: '#1f2d3d',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-    const coins = this.add
-      .text(width / 2, 56, `${ZH.coins}: ${save.coins}  ·  形状与颜色可自由搭配`, {
-        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '15px',
-        color: '#b7950b',
-        fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-    this.tag(title);
-    this.tag(coins);
+    this.tag(
+      this.add
+        .text(width / 2, 22, ZH.shop, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '26px',
+          color: '#1f2d3d',
+          fontStyle: 'bold',
+        })
+        .setOrigin(0.5),
+    );
+    this.tag(
+      this.add
+        .text(width / 2, 48, `${ZH.coins}: ${save.coins}`, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '15px',
+          color: '#b7950b',
+          fontStyle: 'bold',
+        })
+        .setOrigin(0.5),
+    );
 
     if (this.shopMsg) {
-      const msg = this.add
-        .text(width / 2, 76, this.shopMsg, {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '13px',
-          color: '#c0392b',
-        })
-        .setOrigin(0.5);
-      this.tag(msg);
+      this.tag(
+        this.add
+          .text(width / 2, 68, this.shopMsg, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '13px',
+            color: '#c0392b',
+          })
+          .setOrigin(0.5),
+      );
     }
 
-    // —— 形状（左）——
-    const shapeTitle = this.add.text(28, 92, ZH.shopShapes, {
-      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '16px',
-      color: '#1f2d3d',
-      fontStyle: 'bold',
-    });
-    this.tag(shapeTitle);
+    this.renderShopTabs(width);
 
+    if (this.shopTab === 'look') this.renderShopLook(save);
+    else if (this.shopTab === 'skills') this.renderShopSkills(save, width);
+    else this.renderShopSpecials(save, width);
+
+    this.makeButton(width / 2, 512, ZH.back, () => {
+      this.mode = 'main';
+      this.shopMsg = '';
+      this.setHeroVisible(true);
+      this.renderMain();
+    }, 160, 40);
+  }
+
+  private renderShopTabs(width: number): void {
+    const tabs: { id: typeof this.shopTab; label: string }[] = [
+      { id: 'look', label: ZH.shopTabLook },
+      { id: 'skills', label: ZH.shopTabSkills },
+      { id: 'specials', label: ZH.shopTabSpecials },
+    ];
+    const startX = width / 2 - 140;
+    tabs.forEach((tab, i) => {
+      const x = startX + i * 140;
+      const active = this.shopTab === tab.id;
+      const bg = this.add
+        .rectangle(x, 88, 120, 32, active ? THEME.button : 0xffffff, active ? 1 : 0.85)
+        .setStrokeStyle(2, THEME.playerStroke)
+        .setInteractive({ useHandCursor: true });
+      const text = this.add
+        .text(x, 88, tab.label, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '15px',
+          color: active ? THEME.uiLight : '#1f2d3d',
+          fontStyle: active ? 'bold' : 'normal',
+        })
+        .setOrigin(0.5);
+      this.tag(bg);
+      this.tag(text);
+      bg.on('pointerdown', () => {
+        this.shopTab = tab.id;
+        this.shopMsg = '';
+        this.renderShop();
+      });
+    });
+  }
+
+  private shopSectionTitle(x: number, y: number, label: string): void {
+    this.tag(
+      this.add.text(x, y, label, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '15px',
+        color: '#1f2d3d',
+        fontStyle: 'bold',
+      }),
+    );
+  }
+
+  private shopHint(x: number, y: number, label: string, maxWidth: number): void {
+    this.tag(
+      this.add
+        .text(x, y, label, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '12px',
+          color: '#566573',
+          wordWrap: { width: maxWidth },
+        })
+        .setOrigin(0, 0),
+    );
+  }
+
+  private shopStatusOrButton(
+    x: number,
+    y: number,
+    opts: { equipped?: boolean; owned?: boolean; buyLabel?: string; onEquip?: () => void; onBuy?: () => void },
+  ): void {
+    if (opts.equipped) {
+      this.tag(
+        this.add
+          .text(x, y, ZH.equipped, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '13px',
+            color: '#27ae60',
+            fontStyle: 'bold',
+          })
+          .setOrigin(0.5),
+      );
+      return;
+    }
+    if (opts.owned && opts.onEquip) {
+      this.makeButton(x, y, '装备', opts.onEquip, 84, 28);
+      return;
+    }
+    if (opts.onBuy && opts.buyLabel) {
+      this.makeButton(x, y, opts.buyLabel, opts.onBuy, 84, 28);
+    }
+  }
+
+  private renderShopLook(save: ReturnType<typeof SaveSystem.load>): void {
+    this.shopHint(40, 112, ZH.shopLookHint, 880);
+
+    // 左：形状
+    this.shopSectionTitle(40, 138, ZH.shopShapes);
     SHAPES.forEach((shape, i) => {
       const owned = save.ownedShapes.includes(shape.id);
       const equipped = save.equippedShape === shape.id;
-      const y = 122 + i * 48;
-      const preview = this.add
-        .image(48, y, shape.texture)
-        .setScale(0.7)
-        .setTint(skinById(save.equippedSkin).tint);
-      const name = this.add
-        .text(72, y, `${shapeLabel(shape.id)}${shape.price > 0 ? ` · ${shape.price}` : ''}`, {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '13px',
-          color: '#1f2d3d',
-        })
-        .setOrigin(0, 0.5);
-      this.tag(preview);
-      this.tag(name);
-      if (equipped) {
-        const t = this.add
-          .text(210, y, ZH.equipped, {
+      const y = 172 + i * 42;
+      this.tag(
+        this.add
+          .image(56, y, shape.texture)
+          .setScale(0.62)
+          .setTint(skinById(save.equippedSkin).tint),
+      );
+      this.tag(
+        this.add
+          .text(78, y, `${shapeLabel(shape.id)}${shape.price > 0 ? `  ${shape.price}` : ''}`, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
-            color: '#27ae60',
+            fontSize: '13px',
+            color: '#1f2d3d',
           })
-          .setOrigin(0.5);
-        this.tag(t);
-      } else {
-        const btnLabel = owned ? '装备' : `${ZH.buy} ${shape.price}`;
-        this.makeButton(210, y, btnLabel, () => this.onBuyOrEquipShape(shape.id, shape.price), 96, 30);
-      }
+          .setOrigin(0, 0.5),
+      );
+      this.shopStatusOrButton(250, y, {
+        equipped,
+        owned,
+        buyLabel: `${ZH.buy} ${shape.price}`,
+        onEquip: () => this.onBuyOrEquipShape(shape.id, shape.price),
+        onBuy: () => this.onBuyOrEquipShape(shape.id, shape.price),
+      });
     });
 
-    // —— 颜色（中）——
-    const colorTitle = this.add.text(280, 92, ZH.shopColors, {
-      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '16px',
-      color: '#1f2d3d',
-      fontStyle: 'bold',
-    });
-    this.tag(colorTitle);
-
+    // 右：颜色
+    this.shopSectionTitle(360, 138, ZH.shopColors);
     SKINS.forEach((skin, i) => {
       const owned = save.ownedSkins.includes(skin.id);
       const equipped = save.equippedSkin === skin.id;
-      const y = 122 + i * 52;
-      const swatch = this.add.rectangle(300, y, 24, 24, skin.tint).setStrokeStyle(2, 0x333333);
-      const name = this.add
-        .text(320, y, `${skinLabel(skin.id)}${skin.price > 0 ? ` · ${skin.price}` : ''}`, {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '13px',
-          color: '#1f2d3d',
-        })
-        .setOrigin(0, 0.5);
-      this.tag(swatch);
-      this.tag(name);
-      if (equipped) {
-        const t = this.add
-          .text(455, y, ZH.equipped, {
+      const y = 172 + i * 48;
+      this.tag(this.add.rectangle(380, y, 22, 22, skin.tint).setStrokeStyle(2, 0x333333));
+      this.tag(
+        this.add
+          .text(400, y, `${skinLabel(skin.id)}${skin.price > 0 ? `  ${skin.price}` : ''}`, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
-            color: '#27ae60',
+            fontSize: '13px',
+            color: '#1f2d3d',
           })
-          .setOrigin(0.5);
-        this.tag(t);
-      } else {
-        const btnLabel = owned ? '装备' : `${ZH.buy} ${skin.price}`;
-        this.makeButton(455, y, btnLabel, () => this.onBuyOrEquipSkin(skin.id, skin.price), 96, 30);
-      }
+          .setOrigin(0, 0.5),
+      );
+      this.shopStatusOrButton(580, y, {
+        equipped,
+        owned,
+        buyLabel: `${ZH.buy} ${skin.price}`,
+        onEquip: () => this.onBuyOrEquipSkin(skin.id, skin.price),
+        onBuy: () => this.onBuyOrEquipSkin(skin.id, skin.price),
+      });
     });
+  }
 
-    // —— 技能（右）——
-    const skillTitle = this.add.text(520, 92, ZH.shopSkills, {
-      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '15px',
-      color: '#1f2d3d',
-      fontStyle: 'bold',
-    });
-    this.tag(skillTitle);
+  private renderShopSkills(save: ReturnType<typeof SaveSystem.load>, width: number): void {
+    this.shopSectionTitle(40, 118, ZH.shopSkills);
+    this.shopHint(40, 140, ZH.shopSkillsHint, 880);
 
+    const btnX = width - 90;
+    const textW = btnX - 160;
+
+    // 空手 / 卸下
     {
-      const y = 122;
-      const name = this.add
-        .text(520, y, ZH.skillNone, {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '13px',
-          color: '#1f2d3d',
-        })
-        .setOrigin(0, 0.5);
-      this.tag(name);
-      if (save.equippedSkill === 'none') {
-        const t = this.add
-          .text(width - 70, y, ZH.equipped, {
+      const y = 178;
+      this.tag(
+        this.add
+          .text(56, y, ZH.skillNone, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
-            color: '#27ae60',
+            fontSize: '14px',
+            color: '#1f2d3d',
           })
-          .setOrigin(0.5);
-        this.tag(t);
+          .setOrigin(0, 0.5),
+      );
+      if (save.equippedSkill === 'none') {
+        this.tag(
+          this.add
+            .text(btnX, y, ZH.equipped, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '13px',
+              color: '#27ae60',
+              fontStyle: 'bold',
+            })
+            .setOrigin(0.5),
+        );
       } else {
-        this.makeButton(width - 70, y, ZH.unequip, () => this.onEquipSkill('none'), 96, 30);
+        this.makeButton(btnX, y, ZH.unequip, () => this.onEquipSkill('none'), 88, 30);
       }
     }
 
     SKILLS.forEach((skill, i) => {
       const owned = save.ownedSkills.includes(skill.id);
       const equipped = save.equippedSkill === skill.id;
-      const y = 158 + i * 58;
-      const name = this.add
-        .text(520, y - 8, `${skillLabel(skill.id)} · ${skill.price}`, {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '13px',
-          color: '#1f2d3d',
-        })
-        .setOrigin(0, 0.5);
-      const desc = this.add
-        .text(520, y + 10, skillDesc(skill.id), {
-          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '11px',
-          color: '#566573',
-        })
-        .setOrigin(0, 0.5);
-      this.tag(name);
-      this.tag(desc);
-      if (equipped) {
-        const t = this.add
-          .text(width - 70, y, ZH.equipped, {
-            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
-            color: '#27ae60',
-          })
-          .setOrigin(0.5);
-        this.tag(t);
-      } else if (owned) {
-        this.makeButton(width - 70, y, '装备', () => this.onEquipSkill(skill.id), 96, 30);
-      } else {
-        this.makeButton(
-          width - 70,
-          y,
-          `${ZH.buy} ${skill.price}`,
-          () => this.onBuySkill(skill.id, skill.price),
-          96,
-          30,
-        );
-      }
-    });
-
-    // —— 特殊技能（N，可与 K 技能同时装备）——
-    const specialTitle = this.add.text(520, 318, ZH.shopSpecials, {
-      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '14px',
-      color: '#1f2d3d',
-      fontStyle: 'bold',
-    });
-    this.tag(specialTitle);
-
-    {
-      const y = 342;
-      if (save.equippedSpecial === 'none') {
-        const t = this.add
-          .text(width - 70, y, ZH.equipped, {
-            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
-            color: '#27ae60',
-          })
-          .setOrigin(0.5);
-        this.tag(
-          this.add
-            .text(520, y, ZH.specialNone, {
-              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-              fontSize: '13px',
-              color: '#1f2d3d',
-            })
-            .setOrigin(0, 0.5),
-        );
-        this.tag(t);
-      } else {
-        this.tag(
-          this.add
-            .text(520, y, ZH.specialNone, {
-              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-              fontSize: '13px',
-              color: '#1f2d3d',
-            })
-            .setOrigin(0, 0.5),
-        );
-        this.makeButton(width - 70, y, ZH.unequip, () => this.onEquipSpecial('none'), 96, 30);
-      }
-    }
-
-    SPECIALS.forEach((spec, i) => {
-      const owned = save.ownedSpecials.includes(spec.id);
-      const equipped = save.equippedSpecial === spec.id;
-      const y = 372 + i * 72;
-      let title = `${specialLabel(spec.id)} · ${spec.price}`;
-      if (owned && spec.id === 'missile') {
-        title = `${specialLabel(spec.id)} · CD${save.missileLevel}/${MISSILE_MAX_LEVEL} · 齐射${save.missileSalvoLevel}/${MISSILE_SALVO_MAX_LEVEL}`;
-      } else if (owned && spec.id === 'orbit') {
-        title = `${specialLabel(spec.id)} · 存${save.orbitLevel}/${ORBIT_MAX_LEVEL}`;
-      }
+      const y = 230 + i * 70;
       this.tag(
         this.add
-          .text(520, y - 14, title, {
+          .text(56, y - 12, `${skillLabel(skill.id)} · ${skill.price}`, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '12px',
+            fontSize: '14px',
             color: '#1f2d3d',
+            fontStyle: 'bold',
           })
           .setOrigin(0, 0.5),
       );
+      this.tag(
+        this.add
+          .text(56, y + 12, skillDesc(skill.id), {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#566573',
+            wordWrap: { width: textW },
+          })
+          .setOrigin(0, 0.5),
+      );
+      this.shopStatusOrButton(btnX, y, {
+        equipped,
+        owned,
+        buyLabel: `${ZH.buy} ${skill.price}`,
+        onEquip: () => this.onEquipSkill(skill.id),
+        onBuy: () => this.onBuySkill(skill.id, skill.price),
+      });
+    });
+  }
+
+  private renderShopSpecials(save: ReturnType<typeof SaveSystem.load>, width: number): void {
+    this.shopSectionTitle(40, 118, ZH.shopSpecials);
+    this.shopHint(40, 140, ZH.shopSpecialsHint, 880);
+
+    const btnX = width - 90;
+    const textW = width - 220;
+
+    SPECIALS.forEach((spec, i) => {
+      const owned = save.ownedSpecials.includes(spec.id);
+      const equipped = save.equippedSpecials.includes(spec.id);
+      const blockTop = 172 + i * 150;
+
+      let title = `${specialLabel(spec.id)} · ${spec.price}`;
+      if (owned && spec.id === 'missile') {
+        title = `${specialLabel(spec.id)}  CD ${save.missileLevel}/${MISSILE_MAX_LEVEL}  齐射 ${save.missileSalvoLevel}/${MISSILE_SALVO_MAX_LEVEL}`;
+      } else if (owned && spec.id === 'orbit') {
+        title = `${specialLabel(spec.id)}  存储 ${save.orbitLevel}/${ORBIT_MAX_LEVEL}`;
+      }
+
+      this.tag(
+        this.add
+          .text(56, blockTop, title, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '14px',
+            color: '#1f2d3d',
+            fontStyle: 'bold',
+          })
+          .setOrigin(0, 0),
+      );
+
       let detail = specialDesc(spec.id);
       if (owned && spec.id === 'missile') {
         detail = ZH.specialMissileLv(
@@ -519,53 +570,43 @@ export class MenuScene extends Phaser.Scene {
           missileSalvoCount(save.missileSalvoLevel),
         );
       } else if (owned && spec.id === 'orbit') {
-        detail = ZH.specialOrbitLv(
-          save.orbitLevel,
-          ORBIT_MAX_LEVEL,
-          orbitCapacity(save.orbitLevel),
-        );
+        detail = [
+          ZH.specialOrbitLv(save.orbitLevel, ORBIT_MAX_LEVEL, orbitCapacity(save.orbitLevel)),
+          orbitShieldsUnlocked(save) ? ZH.specialOrbitShieldPerk : ZH.specialOrbitShieldLocked,
+        ].join('\n');
       }
+
       this.tag(
         this.add
-          .text(520, y + 4, detail, {
+          .text(56, blockTop + 24, detail, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-            fontSize: '10px',
+            fontSize: '12px',
             color: '#566573',
+            lineSpacing: 4,
+            wordWrap: { width: textW },
           })
-          .setOrigin(0, 0.5),
+          .setOrigin(0, 0),
       );
 
+      // 右侧操作列：装备 / 购买，下方升级，互不重叠
       if (!owned) {
-        this.makeButton(
-          width - 70,
-          y,
-          `${ZH.buy} ${spec.price}`,
-          () => this.onBuySpecial(spec.id, spec.price),
-          96,
-          28,
-        );
+        this.makeButton(btnX, blockTop + 36, `${ZH.buy} ${spec.price}`, () => {
+          this.onBuySpecial(spec.id, spec.price);
+        }, 96, 30);
         return;
       }
 
       if (equipped) {
-        this.tag(
-          this.add
-            .text(width - 70, y - 16, ZH.equipped, {
-              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-              fontSize: '12px',
-              color: '#27ae60',
-            })
-            .setOrigin(0.5),
-        );
+        this.makeButton(btnX, blockTop + 8, ZH.unequip, () => this.onUnequipSpecial(spec.id), 96, 28);
       } else {
-        this.makeButton(width - 70, y - 16, '装备', () => this.onEquipSpecial(spec.id), 96, 26);
+        this.makeButton(btnX, blockTop + 8, '装备', () => this.onEquipSpecial(spec.id), 96, 28);
       }
 
       if (spec.id === 'missile') {
         if (save.missileLevel >= MISSILE_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(width - 170, y + 14, ZH.specialMaxLevel, {
+              .text(btnX, blockTop + 52, `冷却 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -574,19 +615,18 @@ export class MenuScene extends Phaser.Scene {
           );
         } else {
           this.makeButton(
-            width - 170,
-            y + 14,
+            btnX,
+            blockTop + 52,
             ZH.specialUpgradeCd(MISSILE_UPGRADE_PRICE),
             () => this.onUpgradeMissile(),
-            88,
-            24,
+            96,
+            26,
           );
         }
-
         if (save.missileSalvoLevel >= MISSILE_SALVO_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(width - 70, y + 14, ZH.specialMaxLevel, {
+              .text(btnX, blockTop + 88, `齐射 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -595,19 +635,19 @@ export class MenuScene extends Phaser.Scene {
           );
         } else {
           this.makeButton(
-            width - 70,
-            y + 14,
+            btnX,
+            blockTop + 88,
             ZH.specialUpgradeSalvo(MISSILE_SALVO_UPGRADE_PRICE),
             () => this.onUpgradeMissileSalvo(),
-            88,
-            24,
+            96,
+            26,
           );
         }
       } else if (spec.id === 'orbit') {
         if (save.orbitLevel >= ORBIT_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(width - 70, y + 14, ZH.specialMaxLevel, {
+              .text(btnX, blockTop + 52, `存储 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -616,21 +656,15 @@ export class MenuScene extends Phaser.Scene {
           );
         } else {
           this.makeButton(
-            width - 70,
-            y + 14,
+            btnX,
+            blockTop + 52,
             ZH.specialUpgradeOrbit(ORBIT_UPGRADE_PRICE),
             () => this.onUpgradeOrbit(),
-            88,
-            24,
+            96,
+            26,
           );
         }
       }
-    });
-
-    this.makeButton(width / 2, 520, ZH.back, () => {
-      this.mode = 'main';
-      this.shopMsg = '';
-      this.renderMain();
     });
   }
 
@@ -676,8 +710,14 @@ export class MenuScene extends Phaser.Scene {
     this.renderShop();
   }
 
-  private onEquipSpecial(id: EquippedSpecial): void {
+  private onEquipSpecial(id: SpecialId): void {
     SaveSystem.equipSpecial(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onUnequipSpecial(id: SpecialId): void {
+    SaveSystem.unequipSpecial(id);
     this.shopMsg = '';
     this.renderShop();
   }

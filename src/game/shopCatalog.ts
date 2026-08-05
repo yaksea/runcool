@@ -1,6 +1,22 @@
-import type { ShapeId, SkinId, SkillId, SpecialId } from '../systems/SaveSystem';
+import type {
+  InventoryWeapon,
+  SaveData,
+  ShapeId,
+  SkinId,
+  SkillId,
+  SpecialId,
+} from '../systems/SaveSystem';
 
 export type { ShapeId, SkinId, SkillId, SpecialId };
+
+/** Every shop weapon that must be owned for full completion. */
+export const SHOP_WEAPONS: InventoryWeapon[] = [
+  'glove',
+  'peashooter',
+  'hammer',
+  'fireball',
+  'shotgun',
+];
 
 /** Color (tint) — independent of shape. */
 export type SkinDef = {
@@ -42,7 +58,7 @@ export const SHAPES: ShapeDef[] = [
 ];
 
 export const SKILLS: SkillDef[] = [
-  { id: 'blink', price: 15, cooldownMs: 2800, durationMs: 0 },
+  { id: 'blink', price: 35, cooldownMs: 0, durationMs: 0 },
   { id: 'haste', price: 18, cooldownMs: 4500, durationMs: 2800 },
   { id: 'flight', price: 22, cooldownMs: 5000, durationMs: 2600 },
 ];
@@ -54,7 +70,7 @@ export type SpecialDef = {
   cooldownMs: number;
 };
 
-/** Independent special skills (N key), can equip alongside K skills. */
+/** Independent specials (M=missile, N=orbit); both can be equipped with K skills. */
 export const SPECIALS: SpecialDef[] = [
   { id: 'missile', price: 50, cooldownMs: 4500 },
   { id: 'orbit', price: 100, cooldownMs: 0 },
@@ -113,4 +129,25 @@ export function missileSalvoCount(salvoLevel: number): number {
 export function orbitCapacity(orbitLevel: number): number {
   const lv = Math.max(0, Math.min(ORBIT_MAX_LEVEL, Math.floor(orbitLevel)));
   return 1 + lv;
+}
+
+/**
+ * True when every shop purchase is owned / maxed:
+ * all skins, shapes, skills, specials, weapons, and special upgrades.
+ */
+export function isShopFullyOwned(save: SaveData): boolean {
+  if (!SHOP_WEAPONS.every((w) => save.inventory.includes(w))) return false;
+  if (!SKINS.every((s) => save.ownedSkins.includes(s.id))) return false;
+  if (!SHAPES.every((s) => save.ownedShapes.includes(s.id))) return false;
+  if (!SKILLS.every((s) => save.ownedSkills.includes(s.id))) return false;
+  if (!SPECIALS.every((s) => save.ownedSpecials.includes(s.id))) return false;
+  if (save.missileLevel < MISSILE_MAX_LEVEL) return false;
+  if (save.missileSalvoLevel < MISSILE_SALVO_MAX_LEVEL) return false;
+  if (save.orbitLevel < ORBIT_MAX_LEVEL) return false;
+  return true;
+}
+
+/** Orbit bullet-block + enemy-repulse shields (requires full shop completion). */
+export function orbitShieldsUnlocked(save: SaveData): boolean {
+  return isShopFullyOwned(save);
 }

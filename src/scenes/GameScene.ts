@@ -10,10 +10,18 @@ import { CrumblePlatform } from '../entities/CrumblePlatform';
 import { Bumper } from '../entities/Bumper';
 import { PortalPairSystem } from '../entities/Portal';
 import { Geyser } from '../entities/Geyser';
+import { FlameVent } from '../entities/FlameVent';
+import { AcidPool } from '../entities/AcidPool';
 import { TimedPlatform } from '../entities/TimedPlatform';
 import { InteractSystem } from '../entities/Interactables';
-import { getLevelById, LEVELS } from '../levels';
+import { getLevelById, isTutorialLevel, LEVELS } from '../levels';
 import type { EnemyDef, LadderDef, LevelDef } from '../levels/types';
+import {
+  buildTutorialZones,
+  nearestTutorialZone,
+  tipForEnemyType,
+  type TutorialZone,
+} from '../game/tutorialAssist';
 import { ZH, skillLabel, specialLabel, weaponLabel, weaponPickupToast } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { WEAPON_STATS } from '../game/weapons';
@@ -22,6 +30,7 @@ import {
   missileCooldownMs,
   missileSalvoCount,
   orbitCapacity,
+  orbitShieldsUnlocked,
   shapeById,
   skillById,
   skinById,
@@ -31,10 +40,10 @@ import { rollEnemyCoinDrop } from '../game/loot';
 import {
   PIPE_ARENA,
   PIPE_ARENA_HITS,
-  PIPE_ARENA_REWARD,
   PIPE_ENTER_INVINCIBLE_MS,
   arenaOriginX,
   pipeArenaPack,
+  pipeArenaReward,
 } from '../game/pipeArena';
 import { SaveSystem, type WeaponType } from '../systems/SaveSystem';
 import { SoundSystem } from '../systems/SoundSystem';
@@ -53,13 +62,16 @@ export class GameScene extends Phaser.Scene {
   private pads!: Phaser.Physics.Arcade.StaticGroup;
   private finish!: Phaser.Physics.Arcade.Sprite;
   private enemies: Enemy[] = [];
-  /** Overworld spawn points: death→respawn, alive→reinforce, every 10s. */
+  /** Overworld spawn points: death→respawn, alive→reinforce, every 30s. */
   private spawnPoints: {
     def: EnemyDef;
     current: Enemy | null;
     nextAt: number;
     extras: Enemy[];
   }[] = [];
+  private tutorialZones: TutorialZone[] = [];
+  private tutorialAssistOn = true;
+  private lastTutorialZoneId: string | null = null;
   private pickups: WeaponPickup[] = [];
   private coins: CoinPickup[] = [];
   private projectiles!: Phaser.Physics.Arcade.Group;
@@ -84,12 +96,14 @@ export class GameScene extends Phaser.Scene {
   private keySpace!: Phaser.Input.Keyboard.Key;
   private keyJ!: Phaser.Input.Keyboard.Key;
   private keyK!: Phaser.Input.Keyboard.Key;
+  private keyM!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private skillReadyAt = 0;
-  private specialReadyAt = 0;
+  private missileReadyAt = 0;
+  private orbitReadyAt = 0;
   private missiles: {
     sprite: Phaser.Physics.Arcade.Sprite;
     target: Enemy | null;
@@ -119,6 +133,8 @@ export class GameScene extends Phaser.Scene {
   private bumpers: Bumper[] = [];
   private portals: PortalPairSystem | null = null;
   private geysers: Geyser[] = [];
+  private flameVents: FlameVent[] = [];
+  private acidPools: AcidPool[] = [];
   private timedPlatforms: TimedPlatform[] = [];
   private interact!: InteractSystem;
   private conveyors: {
@@ -149,6 +165,9 @@ export class GameScene extends Phaser.Scene {
     this.level = level;
     this.enemies = [];
     this.spawnPoints = [];
+    this.tutorialZones = [];
+    this.lastTutorialZoneId = null;
+    this.tutorialAssistOn = SaveSystem.load().tutorialAssist !== false;
     this.pickups = [];
     this.coins = [];
     this.checkpointSprites = [];
@@ -160,6 +179,8 @@ export class GameScene extends Phaser.Scene {
     this.bumpers = [];
     this.portals = null;
     this.geysers = [];
+    this.flameVents = [];
+    this.acidPools = [];
     this.timedPlatforms = [];
     this.conveyors = [];
     this.checkpointFloorIds = null;
@@ -173,7 +194,8 @@ export class GameScene extends Phaser.Scene {
     this.adOpen = false;
     this.dying = false;
     this.skillReadyAt = 0;
-    this.specialReadyAt = 0;
+    this.missileReadyAt = 0;
+    this.orbitReadyAt = 0;
     this.missiles = [];
     this.orbitBaseAngle = 0;
     this.orbitRing?.destroy();
@@ -226,6 +248,8 @@ export class GameScene extends Phaser.Scene {
     this.buildBumpers();
     this.buildPortals();
     this.buildGeysers();
+    this.buildFlameVents();
+    this.buildAcidPools();
     this.buildTimedPlatforms();
     this.buildInteractables();
     this.buildSpikes();
@@ -240,15 +264,30 @@ export class GameScene extends Phaser.Scene {
     this.portals?.suppress(1500);
 
     this.physics.add.overlap(this.player.sprite, this.hazardProjectiles, (_p, shot) => {
-      retirePhysicsSprite(shot as Phaser.Physics.Arcade.Sprite);
+      const s = shot as Phaser.Physics.Arcade.Sprite;
+      // Spent or already bounced back by the orbit shield — never hurt the player.
+      if (!s.active || s.getData('spent') === true || s.getData('reflected') === true) return;
+      retirePhysicsSprite(s);
       this.hurtPlayer();
     });
     // Homing hazard shots are blocked by solid terrain (static + moving floors).
+    // Reflected shots ignore terrain and keep flying.
     this.physics.add.overlap(this.hazardProjectiles, this.platforms, (proj) => {
-      retirePhysicsSprite(proj as Phaser.Physics.Arcade.Sprite);
+      const s = proj as Phaser.Physics.Arcade.Sprite;
+      if (s.getData('reflected') === true) return;
+      retirePhysicsSprite(s);
     });
     this.physics.add.overlap(this.hazardProjectiles, this.movingGroup, (proj) => {
-      retirePhysicsSprite(proj as Phaser.Physics.Arcade.Sprite);
+      const s = proj as Phaser.Physics.Arcade.Sprite;
+      if (s.getData('reflected') === true) return;
+      retirePhysicsSprite(s);
+    });
+    // Bounced hazard shots damage enemies (sweep in update is the reliable path).
+    this.physics.add.overlap(this.hazardProjectiles, this.enemiesGroup, (a, b) => {
+      this.onReflectedHazardHitEnemy(
+        a as Phaser.Physics.Arcade.Sprite,
+        b as Phaser.Physics.Arcade.Sprite,
+      );
     });
 
     // Climbing: skip solid floors so ladders can pass through platforms.
@@ -296,19 +335,29 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player.sprite, true, 0.12, 0.12);
     this.cameras.main.setDeadzone(80, 60);
 
+    // J is read here BEFORE Arcade overlaps — scene.update runs too late to block stomp.
+    this.events.on(Phaser.Scenes.Events.PRE_UPDATE, this.preUpdateGunStompGuard, this);
     // Support after Arcade step so seesaws feel solid.
     this.events.on(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.events.off(Phaser.Scenes.Events.PRE_UPDATE, this.preUpdateGunStompGuard, this);
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
     });
 
     if (this.scene.isActive('UIScene') || this.scene.isSleeping('UIScene')) {
       this.scene.stop('UIScene');
     }
-    this.scene.launch('UIScene', { levelIndex: this.level.index });
+    this.scene.launch('UIScene', {
+      levelIndex: this.level.index,
+      isTutorial: isTutorialLevel(this.level),
+    });
     this.events.emit('hud', this.getHudPayload());
 
-    if (this.level.index === 1 && this.checkpointIndex < 0) {
+    if (isTutorialLevel(this.level)) {
+      this.tutorialZones = buildTutorialZones(this.level);
+      this.time.delayedCall(200, () => this.events.emit('toast', ZH.tutorialWelcome));
+      this.events.emit('tutorialAssistState', this.tutorialAssistOn);
+    } else if (this.level.index === 1 && this.checkpointIndex < 0) {
       this.time.delayedCall(200, () => this.events.emit('toast', ZH.controls));
     }
   }
@@ -351,13 +400,15 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyK)) {
       this.tryUseSkill();
     }
+    // M = tracking salvo; N = orbit fill (both can be equipped together).
+    if (Phaser.Input.Keyboard.JustDown(this.keyM)) {
+      this.tryUseMissile();
+    }
     if (this.keyN.isDown) {
-      const equipped = SaveSystem.load().equippedSpecial;
-      if (equipped === 'orbit') {
-        // Hold N to keep filling the orbit ring.
+      if (SaveSystem.isSpecialEquipped('orbit')) {
         this.tryUseOrbit(true);
       } else if (Phaser.Input.Keyboard.JustDown(this.keyN)) {
-        this.tryUseSpecial();
+        this.events.emit('toast', ZH.noOrbitEquipped);
       }
     }
     if (Phaser.Input.Keyboard.JustDown(this.keyX)) {
@@ -369,11 +420,13 @@ export class GameScene extends Phaser.Scene {
 
     this.enemies.forEach((e) => e.update(this.player));
     this.updateSpawnPoints();
+    this.updateTutorialAssist();
     this.player.tickVitals(delta);
     // After flyers sync their bodies, sweep fast shots so peas can't tunnel through bats.
     this.sweepPlayerProjectiles();
     this.updateHazardHoming();
     this.updateOrbitMissiles(delta);
+    this.sweepReflectedHazards();
     this.updateMissiles(delta);
     this.updateMovingPlatforms(delta);
     this.seesaws.forEach((s) => s.updateTilt(this.player, delta));
@@ -382,12 +435,26 @@ export class GameScene extends Phaser.Scene {
     this.bumpers.forEach((b) => b.tryHit(this.player));
     if (this.pipeState !== 'active') this.portals?.tryTeleport(this.player);
     this.geysers.forEach((g) => g.update(this.player));
+    for (const vent of this.flameVents) {
+      if (vent.update(this.player, this.enemies)) this.hurtPlayer();
+    }
+    for (const pool of this.acidPools) {
+      if (pool.update(this.player, this.enemies)) this.hurtPlayer();
+    }
     this.timedPlatforms.forEach((t) => t.update());
     this.applyConveyors(delta);
     this.checkFallDeath();
     if (this.pipeState === 'active') this.checkPipeArenaClear();
     if (this.pipeState !== 'active') this.checkCheckpoints();
     this.events.emit('hud', this.getHudPayload());
+  }
+
+  /** Keep stomp suppressed while firing so gun+contact never looks like a bullet OHKO. */
+  private preUpdateGunStompGuard(): void {
+    if (!this.runActive || this.paused || this.inventoryOpen || this.dying || !this.keyJ) return;
+    if (this.keyJ.isDown || this.hasLivePlayerShot()) {
+      this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 200);
+    }
   }
 
   private postUpdateSeesaws(): void {
@@ -405,6 +472,7 @@ export class GameScene extends Phaser.Scene {
     this.keySpace = kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.keyJ = kb.addKey(Phaser.Input.Keyboard.KeyCodes.J);
     this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
+    this.keyM = kb.addKey(Phaser.Input.Keyboard.KeyCodes.M);
     this.keyN = kb.addKey(Phaser.Input.Keyboard.KeyCodes.N);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
@@ -755,6 +823,23 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private buildFlameVents(): void {
+    (this.level.flameVents ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x, def.y)) return;
+      // Snap to platform top so vents sit on floors and stay visible.
+      const groundY = this.findPlatformTopAt(def.x, def.y);
+      this.flameVents.push(new FlameVent(this, { ...def, y: groundY }));
+    });
+  }
+
+  private buildAcidPools(): void {
+    (this.level.acidPools ?? []).forEach((def) => {
+      if (this.onCheckpointPlatform(def.x, def.y)) return;
+      const groundY = this.findPlatformTopAt(def.x, def.y);
+      this.acidPools.push(new AcidPool(this, { ...def, y: groundY }));
+    });
+  }
+
   private buildTimedPlatforms(): void {
     // Timed platforms are floors — keep them even if a checkpoint sits nearby on another slab.
     (this.level.timedPlatforms ?? []).forEach((def) => {
@@ -832,21 +917,27 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Nearest platform top at x; prefers tops at or below hintY within a small band. */
+  /** Nearest platform top at x; prefers tops near hintY, else any platform under x. */
   private findPlatformTopAt(x: number, hintY: number): number {
-    let bestY = hintY;
-    let bestDist = Number.POSITIVE_INFINITY;
+    let bandY = hintY;
+    let bandDist = Number.POSITIVE_INFINITY;
+    let anyY = hintY;
+    let anyDist = Number.POSITIVE_INFINITY;
     for (const p of this.level.platforms) {
       if (x < p.x - 4 || x > p.x + p.w + 4) continue;
       const top = p.y;
       const dist = Math.abs(top - hintY);
+      if (dist < anyDist) {
+        anyDist = dist;
+        anyY = top;
+      }
       // Prefer a top close to the authored y (or slightly below floating spikes).
-      if (dist < bestDist && top >= hintY - 40 && top <= hintY + 48) {
-        bestDist = dist;
-        bestY = top;
+      if (dist < bandDist && top >= hintY - 80 && top <= hintY + 72) {
+        bandDist = dist;
+        bandY = top;
       }
     }
-    return bestY;
+    return bandDist < Number.POSITIVE_INFINITY ? bandY : anyY;
   }
 
   private buildPads(): void {
@@ -973,7 +1064,7 @@ export class GameScene extends Phaser.Scene {
     this.portals?.suppress(PIPE_ENTER_INVINCIBLE_MS);
 
     this.spawnArenaEnemies();
-    this.events.emit('toast', ZH.pipeEnter);
+    this.events.emit('toast', ZH.pipeEnter(pipeArenaReward(this.level.index)));
     this.events.emit('hud', this.getHudPayload());
     return true;
   }
@@ -982,19 +1073,24 @@ export class GameScene extends Phaser.Scene {
     this.clearArenaEnemies();
     const ox = this.arenaOrigin.x;
     const floorY = this.arenaOrigin.y + PIPE_ARENA.height - PIPE_ARENA.floorH;
-    // Keep the left safe pad + clear zone empty — denser 3× packing to the right.
+    // Keep the left safe pad + clear zone empty — denser packing to the right.
     const spawnLeft = ox + 48 + PIPE_ARENA.safePadW + PIPE_ARENA.safeClear;
     const packs = pipeArenaPack(this.level.index);
-    const cols = 10;
+    const total = packs.reduce((sum, p) => sum + p.count, 0);
+    // Final 100-cap arena uses a tighter grid so everyone fits in the room.
+    const cols = total > 40 ? 16 : 10;
+    const xStep = total > 40 ? 46 : 62;
+    const flyRowGap = total > 40 ? 26 : 36;
     let slot = 0;
     for (const pack of packs) {
       for (let i = 0; i < pack.count; i++) {
         const flying = pack.type === 'floater' || pack.type === 'bat' || pack.type === 'ghost';
-        // Dense 10-col grid for the 40-cap arena.
         const col = slot % cols;
         const row = Math.floor(slot / cols);
-        const x = spawnLeft + col * 62 + (row % 2) * 16;
-        const y = flying ? floorY - 140 - row * 36 : floorY - 36 - (row % 2) * 14;
+        const x = spawnLeft + col * xStep + (row % 2) * 12;
+        const y = flying
+          ? floorY - 120 - row * flyRowGap
+          : floorY - 36 - (row % 2) * 14;
         // Short patrol so they don't wander into the safe pad.
         const enemy = new Enemy(
           this,
@@ -1012,6 +1108,7 @@ export class GameScene extends Phaser.Scene {
           this.physics.add.collider(enemy.sprite, this.movingGroup);
         }
         this.physics.add.overlap(this.player.sprite, enemy.sprite, () => this.onTouchEnemy(enemy));
+        this.physics.add.overlap(enemy.sprite, this.spikes, () => this.onEnemyHitSpike(enemy));
         slot += 1;
       }
     }
@@ -1028,14 +1125,35 @@ export class GameScene extends Phaser.Scene {
   private checkPipeArenaClear(): void {
     if (this.pipeState !== 'active' || this.dying) return;
     if (this.arenaEnemies.length === 0) return;
-    if (this.arenaEnemies.some((e) => !e.dead)) return;
+
+    // Yeeted out of the room → recall to spawn (does not count as a kill).
+    this.recallArenaEnemiesOutOfBounds();
+
+    if (this.arenaEnemies.some((e) => !e.dead && e.sprite.active)) return;
 
     this.pipeState = 'done';
-    SaveSystem.addCoins(PIPE_ARENA_REWARD);
-    this.events.emit('toast', ZH.pipeClear);
+    const reward = pipeArenaReward(this.level.index);
+    SaveSystem.addCoins(reward);
+    this.events.emit('toast', ZH.pipeClear(reward));
     this.sealPipe();
     this.exitPipeRealm(false);
     this.events.emit('hud', this.getHudPayload());
+  }
+
+  /** Pipe arena: monsters knocked outside respawn at their spawn point. */
+  private recallArenaEnemiesOutOfBounds(): void {
+    const ox = this.arenaOrigin.x;
+    const oy = this.arenaOrigin.y;
+    const aw = PIPE_ARENA.width;
+    const ah = PIPE_ARENA.height;
+    const pad = 48;
+    for (const e of this.arenaEnemies) {
+      if (e.dead || !e.sprite.active) continue;
+      const { x, y } = e.sprite;
+      if (x < ox - pad || x > ox + aw + pad || y < oy - pad || y > oy + ah + pad) {
+        e.recallToSpawn();
+      }
+    }
   }
 
   private failPipeChallenge(): void {
@@ -1089,22 +1207,81 @@ export class GameScene extends Phaser.Scene {
   /** Overworld (non-pipe) enemy density vs authored level defs. */
   private static readonly OVERWORLD_ENEMY_MULT = 3;
   /** Respawn / reinforce interval at each overworld spawn point. */
-  private static readonly SPAWN_REFRESH_MS = 10_000;
+  private static readonly SPAWN_REFRESH_MS = 30_000;
   /** Soft cap of living monsters tied to one spawn point (primary + extras). */
   private static readonly SPAWN_POINT_ALIVE_CAP = 6;
 
   private spawnEnemies(): void {
     this.spawnPoints = [];
+    const tutorial = isTutorialLevel(this.level);
     this.level.enemies.forEach((def) => {
       const minCp = def.afterCheckpoint ?? -1;
       if (minCp > this.checkpointIndex) return;
       if (this.onCheckpointPlatform(def.x, def.y)) return;
+
+      if (tutorial) {
+        // One of each, low HP, no reinforce spam in the showcase hall.
+        this.addOverworldEnemy(def, (enemy) => this.dropEnemyCoins(enemy.sprite.x, enemy.sprite.y));
+        return;
+      }
 
       // 3× refresh: place clones on different nearby platforms, not a tight cluster.
       for (const spot of this.spreadEnemySpots(def, GameScene.OVERWORLD_ENEMY_MULT)) {
         this.registerSpawnPoint({ ...def, ...spot });
       }
     });
+  }
+
+  private updateTutorialAssist(): void {
+    if (!isTutorialLevel(this.level) || !this.player) return;
+    if (!this.tutorialAssistOn) {
+      if (this.lastTutorialZoneId != null) {
+        this.lastTutorialZoneId = null;
+        this.events.emit('tutorialTip', null);
+      }
+      return;
+    }
+
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y;
+
+    // Prefer living enemies — tip follows the monster, not the spawn point.
+    let bestEnemyTip: { id: string; title: string; body: string } | null = null;
+    let bestEnemyD = 160;
+    for (const e of this.enemies) {
+      if (e.dead || !e.sprite.active) continue;
+      if (e.sprite.getData('arena') === true) continue;
+      const d = Phaser.Math.Distance.Between(px, py, e.sprite.x, e.sprite.y);
+      if (d >= bestEnemyD) continue;
+      const tip = tipForEnemyType(e.type);
+      if (!tip) continue;
+      bestEnemyD = d;
+      bestEnemyTip = tip;
+    }
+
+    const zone = bestEnemyTip
+      ? null
+      : nearestTutorialZone(this.tutorialZones, px, py);
+    const next = bestEnemyTip ?? (zone ? { id: zone.id, title: zone.title, body: zone.body } : null);
+    const id = next?.id ?? null;
+    if (id === this.lastTutorialZoneId) return;
+    this.lastTutorialZoneId = id;
+    this.events.emit('tutorialTip', next ? { title: next.title, body: next.body } : null);
+  }
+
+  /** Called from UI: player dismissed or re-enabled assist tips. */
+  setTutorialAssist(enabled: boolean): void {
+    this.tutorialAssistOn = enabled;
+    SaveSystem.setTutorialAssist(enabled);
+    this.lastTutorialZoneId = null;
+    this.events.emit('tutorialAssistState', enabled);
+    if (!enabled) {
+      this.events.emit('tutorialTip', null);
+      this.events.emit('toast', ZH.tutorialDismissed);
+    } else {
+      this.events.emit('toast', ZH.tutorialEnabled);
+      this.updateTutorialAssist();
+    }
   }
 
   private registerSpawnPoint(def: EnemyDef): void {
@@ -1277,11 +1454,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addOverworldEnemy(def: EnemyDef, onDied?: (enemy: Enemy) => void): Enemy {
+    const hitsOverride = isTutorialLevel(this.level) ? 2 : undefined;
     const enemy = new Enemy(
       this,
       def,
       (x, y, dir, opts) => this.fireEnemyHazard(x, y, dir, opts),
-      undefined,
+      hitsOverride,
       onDied,
     );
     this.enemies.push(enemy);
@@ -1294,7 +1472,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.physics.add.overlap(this.player.sprite, enemy.sprite, () => this.onTouchEnemy(enemy));
+    this.physics.add.overlap(enemy.sprite, this.spikes, () => this.onEnemyHitSpike(enemy));
     return enemy;
+  }
+
+  /** Spikes hurt monsters too — same 1-hit chip with their i-frames. */
+  private onEnemyHitSpike(enemy: Enemy): void {
+    if (enemy.dead || !enemy.sprite.active) return;
+    enemy.takeWeaponHit(enemy.sprite.flipX ? -1 : 1);
   }
 
   /** Steer enemy seeking shots toward the player (terrain still retires them on overlap). */
@@ -1304,7 +1489,9 @@ export class GameScene extends Phaser.Scene {
     const py = this.player.sprite.y;
     const shots = this.hazardProjectiles.getChildren() as Phaser.Physics.Arcade.Sprite[];
     for (const shot of shots) {
-      if (!shot.active || shot.getData('homing') !== true) continue;
+      if (!shot.active || shot.getData('spent') === true) continue;
+      if (shot.getData('reflected') === true) continue;
+      if (shot.getData('homing') !== true) continue;
       const speed = (shot.getData('homingSpeed') as number) || 200;
       const body = shot.body as Phaser.Physics.Arcade.Body;
       const desired = Phaser.Math.Angle.Between(shot.x, shot.y, px, py);
@@ -1316,12 +1503,60 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Orbit-reflected hazard shot: chips 1 hit then despawns. */
+  private onReflectedHazardHitEnemy(
+    a: Phaser.Physics.Arcade.Sprite,
+    b: Phaser.Physics.Arcade.Sprite,
+  ): void {
+    // Overlap arg order can swap — identify shot vs enemy by data flags.
+    const shot =
+      a.getData('reflected') === true ? a : b.getData('reflected') === true ? b : null;
+    const enemySprite = shot === a ? b : shot === b ? a : null;
+    if (!shot || !enemySprite || !shot.active) return;
+    if (shot.getData('spent') === true || shot.getData('retiring') === true) return;
+    shot.setData('spent', true);
+    retirePhysicsSprite(shot);
+    const enemy = enemySprite.getData('enemy') as Enemy | undefined;
+    if (!enemy || enemy.dead) return;
+    const knock =
+      Math.sign(enemy.sprite.x - (this.player?.sprite.x ?? enemy.sprite.x)) ||
+      this.player?.facing ||
+      1;
+    enemy.takeWeaponHit(knock);
+  }
+
+  /** Segment sweep so fast reflected shots don't tunnel through foes. */
+  private sweepReflectedHazards(): void {
+    const shots = this.hazardProjectiles.getChildren() as Phaser.Physics.Arcade.Sprite[];
+    for (const shot of shots) {
+      if (!shot.active || shot.getData('reflected') !== true) continue;
+      if (shot.getData('spent') === true || shot.getData('retiring') === true) continue;
+      const prevX = Number(shot.getData('prevX') ?? shot.x);
+      const prevY = Number(shot.getData('prevY') ?? shot.y);
+      for (const enemy of this.enemies) {
+        if (enemy.dead || !enemy.sprite.active) continue;
+        const body = enemy.sprite.body as Phaser.Physics.Arcade.Body | null;
+        if (!body) continue;
+        if (segmentHitsBody(prevX, prevY, shot.x, shot.y, body, 14)) {
+          this.onReflectedHazardHitEnemy(shot, enemy.sprite);
+          break;
+        }
+      }
+      if (shot.active && shot.getData('spent') !== true) {
+        shot.setData('prevX', shot.x);
+        shot.setData('prevY', shot.y);
+      }
+    }
+  }
+
   private onProjectileHitEnemy(
     pea: Phaser.Physics.Arcade.Sprite,
     enemySprite: Phaser.Physics.Arcade.Sprite,
   ): void {
-    if (!pea.active || pea.getData('spent')) return;
-    // Consume the projectile immediately so one pea can never multi-hit.
+    if (!pea.active || pea.getData('spent') === true || pea.getData('retiring') === true) {
+      return;
+    }
+    // Consume first — one pea / volley pellet can never multi-hit or chain-stomp.
     const dealsHit = pea.getData('dealsHit') === true;
     pea.setData('spent', true);
     retirePhysicsSprite(pea);
@@ -1329,8 +1564,9 @@ export class GameScene extends Phaser.Scene {
     if (!dealsHit) return;
     const enemy = enemySprite.getData('enemy') as Enemy | undefined;
     if (!enemy || enemy.dead) return;
+    // Guns always chip exactly 1 hit and refresh the bar (never instantKill / stomp).
     enemy.takeWeaponHit(this.player.facing);
-    this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 700);
+    this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 1000);
   }
 
   /** Continuous hit test for high-speed peas vs small / flying foes. */
@@ -1419,24 +1655,15 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('hud', this.getHudPayload());
   }
 
-  private tryUseSpecial(): void {
-    const save = SaveSystem.load();
-    if (save.equippedSpecial === 'missile') {
-      this.tryUseMissile();
-      return;
-    }
-    if (save.equippedSpecial === 'orbit') {
-      this.tryUseOrbit(false);
-      return;
-    }
-    this.events.emit('toast', ZH.noSpecialEquipped);
-  }
-
   private tryUseMissile(): void {
     const save = SaveSystem.load();
     if (!specialById('missile')) return;
+    if (!save.equippedSpecials.includes('missile')) {
+      this.events.emit('toast', ZH.noMissileEquipped);
+      return;
+    }
     const now = this.time.now;
-    if (now < this.specialReadyAt) {
+    if (now < this.missileReadyAt) {
       this.events.emit('toast', ZH.skillCooldown);
       return;
     }
@@ -1447,7 +1674,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.specialReadyAt = now + missileCooldownMs(save.missileLevel);
+    this.missileReadyAt = now + missileCooldownMs(save.missileLevel);
     const px = this.player.sprite.x;
     const py = this.player.sprite.y - 8;
     for (let i = 0; i < count; i++) {
@@ -1473,8 +1700,12 @@ export class GameScene extends Phaser.Scene {
     const save = SaveSystem.load();
     const def = specialById('orbit');
     if (!def) return;
+    if (!save.equippedSpecials.includes('orbit')) {
+      if (!held) this.events.emit('toast', ZH.noOrbitEquipped);
+      return;
+    }
     const now = this.time.now;
-    if (now < this.specialReadyAt) {
+    if (now < this.orbitReadyAt) {
       if (!held) this.events.emit('toast', ZH.skillCooldown);
       return;
     }
@@ -1487,7 +1718,7 @@ export class GameScene extends Phaser.Scene {
 
     // Catalog CD is 0; keep a short autofill pace so hold-to-load looks sequential.
     const paceMs = held ? Math.max(def.cooldownMs, 80) : def.cooldownMs;
-    this.specialReadyAt = now + paceMs;
+    this.orbitReadyAt = now + paceMs;
     // Insert into the ring; even spacing is applied every frame in updateOrbitMissiles.
     const nextCount = orbiting + 1;
     const angle = this.orbitBaseAngle + ((nextCount - 1) / nextCount) * Math.PI * 2;
@@ -1506,10 +1737,13 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('hud', this.getHudPayload());
   }
 
-  /** Orbit radius grows slightly with count so the ring stays readable. */
+  /** Orbit / shield radius (missiles sit on the same circle). */
   private orbitRadiusForCount(count: number): number {
-    return 50 + Math.min(14, Math.max(0, count - 1) * 2);
+    return 52 + Math.min(12, Math.max(0, count - 1) * 2);
   }
+
+  /** Passive shield radius while orbit skill is equipped (no missiles required). */
+  private static readonly ORBIT_SHIELD_RADIUS = 54;
 
   private findNearestEnemy(): Enemy | null {
     return this.findNearestEnemies(1)[0] ?? null;
@@ -1532,46 +1766,59 @@ export class GameScene extends Phaser.Scene {
     return scored.slice(0, n).map((s) => s.e);
   }
 
-  /** Keep orbit special missiles on an even circle; peel one off when enemies appear. */
+  /**
+   * Orbit skill: free auto-shield ring while equipped; optional missiles orbit on the same circle.
+   */
   private updateOrbitMissiles(delta: number): void {
     if (!this.player) return;
     const px = this.player.sprite.x;
     const py = this.player.sprite.y;
+    const orbitEquipped = SaveSystem.isSpecialEquipped('orbit');
     const orbiting = this.missiles.filter((m) => m.orbiting && m.sprite.active);
 
-    if (orbiting.length === 0) {
+    this.orbitBaseAngle = Phaser.Math.Angle.Wrap(this.orbitBaseAngle + 0.0024 * delta);
+
+    // Shields unlock only after owning everything in the shop (still need orbit equipped).
+    if (orbitEquipped) {
+      const save = SaveSystem.load();
+      const shieldsOn = orbitShieldsUnlocked(save);
+      if (shieldsOn) {
+        const shieldR = GameScene.ORBIT_SHIELD_RADIUS;
+        this.drawOrbitShield(px, py, shieldR, orbiting.length, true);
+        this.reflectHazardsWithOrbitShield(px, py, shieldR);
+        this.repulseEnemiesWithOrbitShield(px, py, shieldR);
+      } else {
+        this.orbitRing?.clear();
+      }
+    } else {
       this.orbitRing?.clear();
-      return;
     }
 
-    this.orbitBaseAngle = Phaser.Math.Angle.Wrap(this.orbitBaseAngle + 0.0026 * delta);
-    const n = orbiting.length;
-    const radius = this.orbitRadiusForCount(n);
+    if (orbiting.length === 0) return;
 
-    // Equal arcs on one shared circle (array order = stable slot order).
+    const n = orbiting.length;
+    const radius = Math.max(GameScene.ORBIT_SHIELD_RADIUS, this.orbitRadiusForCount(n));
+
     for (let i = 0; i < n; i++) {
       const m = orbiting[i];
       const targetAngle = Phaser.Math.Angle.Wrap(this.orbitBaseAngle + (i / n) * Math.PI * 2);
-      // Ease into equal spacing when count changes (radius stays perfect).
       m.orbitAngle = Phaser.Math.Angle.RotateTo(m.orbitAngle, targetAngle, 0.14);
       const x = px + Math.cos(m.orbitAngle) * radius;
       const y = py + Math.sin(m.orbitAngle) * radius;
       m.sprite.setPosition(x, y);
-      // Nose points along the tangent of the circle.
       m.sprite.setRotation(m.orbitAngle + Math.PI / 2);
       const body = m.sprite.body as Phaser.Physics.Arcade.Body;
       body.reset(x, y);
       body.setVelocity(0, 0);
     }
 
-    this.drawOrbitRing(px, py, radius, n);
+    if (!orbitEquipped) return;
 
     const target = this.findNearestEnemy();
     if (!target) return;
     const dist = Phaser.Math.Distance.Between(px, py, target.sprite.x, target.sprite.y);
     if (dist > ORBIT_ENGAGE_RANGE) return;
 
-    // Launch only the missile closest to the aim line — keeps the ring looking round.
     const aim = Phaser.Math.Angle.Between(px, py, target.sprite.x, target.sprite.y);
     let best = orbiting[0];
     let bestScore = Number.POSITIVE_INFINITY;
@@ -1586,28 +1833,140 @@ export class GameScene extends Phaser.Scene {
     best.target = target;
   }
 
-  /** Soft guide ring under the orbiting missiles. */
-  private drawOrbitRing(px: number, py: number, radius: number, count: number): void {
+  /**
+   * Reflect enemy hazard shots that cross the orbit shield ring.
+   * Bounced shots turn blue, ignore terrain, and can hurt monsters.
+   */
+  private reflectHazardsWithOrbitShield(px: number, py: number, radius: number): void {
+    const shots = this.hazardProjectiles.getChildren() as Phaser.Physics.Arcade.Sprite[];
+    const band = 18;
+    for (const shot of shots) {
+      if (!shot.active || shot.getData('spent') === true || shot.getData('retiring') === true) {
+        continue;
+      }
+      if (shot.getData('reflected') === true) continue;
+      const distToPlayer = Phaser.Math.Distance.Between(px, py, shot.x, shot.y);
+      if (Math.abs(distToPlayer - radius) > band) continue;
+
+      let dx = shot.x - px;
+      let dy = shot.y - py;
+      let len = Math.hypot(dx, dy);
+      if (len < 1) {
+        dx = 1;
+        dy = 0;
+        len = 1;
+      }
+      const nx = dx / len;
+      const ny = dy / len;
+      const speed = Math.max(260, (shot.getData('homingSpeed') as number) || 260) * 1.2;
+
+      shot.setData('reflected', true);
+      shot.setData('homing', false);
+      shot.setData('dealsHit', true);
+      if (this.textures.exists('hazard_shot_reflected')) {
+        shot.setTexture('hazard_shot_reflected');
+      } else {
+        shot.setTint(0x5dade2);
+      }
+
+      const ox = px + nx * (radius + 22);
+      const oy = py + ny * (radius + 22);
+      shot.setPosition(ox, oy);
+      shot.setRotation(Math.atan2(ny, nx));
+      const body = shot.body as Phaser.Physics.Arcade.Body;
+      body.setSize(14, 14);
+      body.reset(ox, oy);
+      body.setVelocity(nx * speed, ny * speed);
+      shot.setData('prevX', ox);
+      shot.setData('prevY', oy);
+
+      this.spawnOrbitBlockFx(ox, oy, false);
+    }
+  }
+
+  /**
+   * Orbit perk: bounce enemies at the rim; eject anyone already inside.
+   */
+  private repulseEnemiesWithOrbitShield(px: number, py: number, radius: number): void {
+    const contactR = radius + 18;
+    const rimR = radius + 22;
+    for (const e of this.enemies) {
+      if (e.dead || !e.sprite.active) continue;
+      const dist = Phaser.Math.Distance.Between(px, py, e.sprite.x, e.sprite.y);
+      if (dist > contactR) continue;
+
+      let dx = e.sprite.x - px;
+      let dy = e.sprite.y - py;
+      let len = Math.hypot(dx, dy);
+      if (len < 1) {
+        dx = 1;
+        dy = 0;
+        len = 1;
+      }
+      const nx = dx / len;
+      const ny = dy / len;
+
+      // Already inside the bubble — snap to the outer rim, then knock away.
+      if (dist < radius) {
+        const ox = px + nx * rimR;
+        const oy = py + ny * rimR;
+        e.sprite.setPosition(ox, oy);
+        const body = e.sprite.body as Phaser.Physics.Arcade.Body;
+        body.reset(ox, oy);
+      }
+
+      if (e.applyOrbitRepulse(px, py)) {
+        this.spawnOrbitBlockFx(e.sprite.x, e.sprite.y, true);
+      }
+    }
+  }
+
+  private spawnOrbitBlockFx(x: number, y: number, strong = false): void {
+    const spark = this.add
+      .circle(x, y, strong ? 8 : 6, strong ? 0xf4d03f : 0x5dade2, 0.95)
+      .setDepth(13);
+    this.tweens.add({
+      targets: spark,
+      scale: strong ? 2.6 : 2.2,
+      alpha: 0,
+      duration: strong ? 220 : 180,
+      ease: 'Quad.easeOut',
+      onComplete: () => spark.destroy(),
+    });
+  }
+
+  /** Always-on shield ring while orbit shields are unlocked. */
+  private drawOrbitShield(
+    px: number,
+    py: number,
+    radius: number,
+    missileCount: number,
+    _repulse = false,
+  ): void {
     if (!this.orbitRing) {
       this.orbitRing = this.add.graphics().setDepth(11);
     }
     const g = this.orbitRing;
     g.clear();
-    g.lineStyle(2, 0x1abc9c, 0.22);
+    // Blue reflect shield identity.
+    const main = 0x3498db;
+    const outer = 0x5dade2;
+    g.lineStyle(4, main, 0.55);
     g.strokeCircle(px, py, radius);
-    g.lineStyle(1, 0x5dade2, 0.16);
-    g.strokeCircle(px, py, radius + 4);
-    // Tiny ticks at equal slots for a polished dial look.
-    const tickR0 = radius - 3;
-    const tickR1 = radius + 3;
-    for (let i = 0; i < count; i++) {
-      const a = this.orbitBaseAngle + (i / count) * Math.PI * 2;
-      const c = Math.cos(a);
-      const s = Math.sin(a);
-      g.lineStyle(1.5, 0xffffff, 0.2);
+    g.lineStyle(1.5, outer, 0.45);
+    g.strokeCircle(px, py, radius + 5);
+    g.lineStyle(1, 0xffffff, 0.22);
+    g.strokeCircle(px, py, radius - 4);
+    // Soft rotating ticks so the shield feels alive even with 0 missiles.
+    const ticks = Math.max(6, missileCount * 2);
+    const tickR0 = radius - 4;
+    const tickR1 = radius + 4;
+    for (let i = 0; i < ticks; i++) {
+      const a = this.orbitBaseAngle + (i / ticks) * Math.PI * 2;
+      g.lineStyle(1.5, 0xffffff, 0.35);
       g.beginPath();
-      g.moveTo(px + c * tickR0, py + s * tickR0);
-      g.lineTo(px + c * tickR1, py + s * tickR1);
+      g.moveTo(px + Math.cos(a) * tickR0, py + Math.sin(a) * tickR0);
+      g.lineTo(px + Math.cos(a) * tickR1, py + Math.sin(a) * tickR1);
       g.strokePath();
     }
   }
@@ -1743,26 +2102,28 @@ export class GameScene extends Phaser.Scene {
     const descending = pBody.velocity.y > 120;
     const fromAbove = playerBottom <= enemyTop + 8;
 
-    // Jump + peashooter looked like gun OHKO because airborne contact triggered stomp.
+    // Gunfire must never resolve as a stomp OHKO (looks like the bullet skipped the HP bar).
     const suppressStomp =
       this.keyJ.isDown ||
       now < this.stompSuppressUntil ||
-      this.player.didAttackRecently(now, 800) ||
+      this.player.didAttackRecently(now, 1200) ||
       this.hasLivePlayerShot() ||
       enemy.isStompImmune(now);
 
-    const canStomp =
-      descending && fromAbove && enemy.canBeStomped && !suppressStomp;
+    if (suppressStomp) {
+      // During / after shots: no stomp, and ignore "from above" contact damage.
+      if (fromAbove || enemy.isStompImmune(now) || this.hasLivePlayerShot() || this.keyJ.isDown) {
+        return;
+      }
+      this.hurtPlayer();
+      return;
+    }
 
+    const canStomp = descending && fromAbove && enemy.canBeStomped;
     if (canStomp) {
       enemy.stomp();
       this.player.launch(pBody.velocity.x * 0.25, -460);
       this.player.makeInvincible(now, 320);
-      return;
-    }
-
-    // While shooting / after a hit from above, ignore contact (no false stomp, no self-kill).
-    if (suppressStomp && (fromAbove || enemy.isStompImmune(now))) {
       return;
     }
 
@@ -1879,7 +2240,7 @@ export class GameScene extends Phaser.Scene {
       timeMs: Math.floor(this.elapsedMs),
       deaths: this.deaths,
       stars,
-      hasNext: this.level.index < LEVELS.length,
+      hasNext: !!LEVELS.find((l) => l.index === this.level.index + 1),
       nextLevelId: LEVELS.find((l) => l.index === this.level.index + 1)?.id,
       levelId: this.level.id,
     };
@@ -1901,7 +2262,15 @@ export class GameScene extends Phaser.Scene {
     const save = SaveSystem.load();
     const now = this.time.now;
     const cdLeft = Math.max(0, this.skillReadyAt - now);
-    const specialCdLeft = Math.max(0, this.specialReadyAt - now);
+    const missileCdLeft = Math.max(0, this.missileReadyAt - now);
+    const parts: string[] = [];
+    if (save.equippedSpecials.includes('missile')) {
+      parts.push(`M ${specialLabel('missile')} CD${save.missileLevel}/齐射${save.missileSalvoLevel}`);
+    }
+    if (save.equippedSpecials.includes('orbit')) {
+      const n = this.missiles.filter((m) => m.orbiting).length;
+      parts.push(`N ${specialLabel('orbit')} 存${save.orbitLevel}(${n}/${orbitCapacity(save.orbitLevel)})`);
+    }
     return {
       timeMs: Math.floor(this.elapsedMs),
       deaths: this.deaths,
@@ -1913,13 +2282,8 @@ export class GameScene extends Phaser.Scene {
       weaponLabel: weaponLabel(this.player.weapon),
       skillLabel: skillLabel(save.equippedSkill),
       skillCdMs: cdLeft,
-      specialLabel:
-        save.equippedSpecial === 'missile'
-          ? `${specialLabel('missile')} CD${save.missileLevel}/齐射${save.missileSalvoLevel}`
-          : save.equippedSpecial === 'orbit'
-            ? `${specialLabel('orbit')} 存${save.orbitLevel}(${this.missiles.filter((m) => m.orbiting).length}/${orbitCapacity(save.orbitLevel)})`
-            : specialLabel(save.equippedSpecial),
-      specialCdMs: specialCdLeft,
+      specialLabel: parts.length > 0 ? parts.join(' · ') : ZH.specialNone,
+      specialCdMs: missileCdLeft,
       levelIndex: this.level.index,
     };
   }

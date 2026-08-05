@@ -52,8 +52,20 @@ export const level5: LevelDef = {
     { id: 'p5b', x: 1900, y: 680, pairId: 'p5a' },
   ],
   geysers: [
-    { x: 1600, y: 760, intervalMs: 1400, force: 780 },
-    { x: 2400, y: 720, intervalMs: 1600, force: 740 },
+    { x: 1580, y: 760, intervalMs: 1400, force: 780 },
+    { x: 1780, y: 720, intervalMs: 1600, force: 740 },
+  ],
+  flameVents: [
+    { x: 1120, y: 620, intervalMs: 700, height: 145 },
+    { x: 1680, y: 760, intervalMs: 650, height: 150 },
+    { x: 2380, y: 720, intervalMs: 700, height: 140 },
+    { x: 1520, y: 480, intervalMs: 750, height: 130 },
+  ],
+  acidPools: [
+    { x: 800, y: 280, w: 84 },
+    { x: 1420, y: 720, w: 90 },
+    { x: 2620, y: 760, w: 80 },
+    { x: 2140, y: 760, w: 86 },
   ],
   timedPlatforms: [
     { x: 1600, y: 600, w: 100, h: 20, onMs: 1200, offMs: 700 },
@@ -61,7 +73,7 @@ export const level5: LevelDef = {
   ],
   gates: [{ id: 'gate5a', x: 2500, y: 640, w: 26, h: 100 }],
   levers: [
-    { x: 2100, y: 720, targetId: 'gate5a', targetType: 'gate' },
+    { x: 2540, y: 760, targetId: 'gate5a', targetType: 'gate' },
     { x: 800, y: 320, targetId: 'cv5a', targetType: 'conveyor' },
     { x: 1400, y: 500, targetId: 'fan5a', targetType: 'fan' },
   ],
@@ -71,17 +83,17 @@ export const level5: LevelDef = {
   ],
   crumbles: [
     { x: 620, y: 260, w: 90, h: 22 },
-    { x: 1720, y: 700, w: 90, h: 22 },
+    { x: 1780, y: 760, w: 90, h: 22 },
   ],
   bumpers: [
     { x: 1180, y: 250, dir: 1 },
-    { x: 1700, y: 750, dir: -1 },
+    { x: 2000, y: 720, dir: -1 },
   ],
   spikes: [
-    { x: 560, y: 240, count: 2 },
-    { x: 1360, y: 560, count: 2 },
-    { x: 1940, y: 720, count: 2 },
-    { x: 2480, y: 720, count: 2 },
+    { x: 540, y: 240, count: 4 },
+    { x: 1320, y: 560, count: 4 },
+    { x: 1920, y: 720, count: 3 },
+    { x: 1280, y: 720, count: 3 },
   ],
   pads: [
     { x: 1020, y: 196 },

@@ -40,13 +40,24 @@ export const level2: LevelDef = {
   fans: [{ x: 880, y: 480, w: 64, h: 140, force: 16 }],
   crumbles: [
     { x: 640, y: 300, w: 90, h: 22 },
-    { x: 1500, y: 540, w: 90, h: 22 },
+    { x: 1540, y: 560, w: 90, h: 22 },
   ],
   bumpers: [{ x: 1580, y: 450, dir: -1 }],
   spikes: [
-    { x: 780, y: 320, count: 2 },
-    { x: 1200, y: 600, count: 2 },
-    { x: 400, y: 680, count: 2 },
+    { x: 760, y: 320, count: 4 },
+    { x: 1180, y: 600, count: 4 },
+    { x: 1280, y: 600, count: 3 },
+    { x: 380, y: 680, count: 4 },
+    { x: 520, y: 680, count: 3 },
+  ],
+  flameVents: [
+    { x: 1020, y: 280, intervalMs: 700, height: 140 },
+    { x: 900, y: 640, intervalMs: 650, height: 145 },
+    { x: 1460, y: 560, intervalMs: 750, height: 130 },
+  ],
+  acidPools: [
+    { x: 540, y: 280, w: 84 },
+    { x: 660, y: 680, w: 90 },
   ],
   pads: [
     { x: 1000, y: 256 },

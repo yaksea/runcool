@@ -653,6 +653,32 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillTriangle(20, 14, 12, 48, 28, 48);
   }, 40, 52);
 
+  ensure(scene, 'flame_vent', (g) => {
+    g.fillStyle(0x5d4037, 1);
+    g.fillRoundedRect(6, 30, 28, 18, 4);
+    g.fillStyle(0xc0392b, 1);
+    g.fillTriangle(20, 0, 4, 32, 36, 32);
+    g.fillStyle(0xe74c3c, 1);
+    g.fillTriangle(20, 6, 8, 32, 32, 32);
+    g.fillStyle(0xf39c12, 1);
+    g.fillTriangle(20, 12, 12, 32, 28, 32);
+    g.fillStyle(0xf7dc6f, 1);
+    g.fillTriangle(20, 18, 15, 32, 25, 32);
+  }, 40, 48);
+
+  ensure(scene, 'acid_pool', (g) => {
+    g.fillStyle(0x1e8449, 0.95);
+    g.fillEllipse(36, 14, 68, 22);
+    g.fillStyle(0x58d68d, 0.9);
+    g.fillEllipse(36, 12, 52, 14);
+    g.fillStyle(0xabebc6, 0.75);
+    g.fillEllipse(28, 10, 14, 6);
+    g.fillEllipse(46, 12, 10, 5);
+    g.fillStyle(0xf4d03f, 0.55);
+    g.fillCircle(22, 11, 2);
+    g.fillCircle(50, 13, 1.5);
+  }, 72, 24);
+
   ensure(scene, 'timed_platform', (g) => {
     g.fillStyle(0x5dade2, 1);
     g.fillRoundedRect(0, 8, 64, 36, 4);
@@ -716,6 +742,17 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillStyle(0xf5b041, 1);
     g.fillCircle(8, 8, 3);
     g.fillStyle(0xffffff, 0.85);
+    g.fillCircle(6, 6, 1.5);
+  }, 16, 16);
+
+  replace(scene, 'hazard_shot_reflected', (g) => {
+    g.fillStyle(0x1a5276, 1);
+    g.fillCircle(8, 8, 7);
+    g.fillStyle(0x2980b9, 1);
+    g.fillCircle(8, 8, 5);
+    g.fillStyle(0x5dade2, 1);
+    g.fillCircle(8, 8, 3);
+    g.fillStyle(0xffffff, 0.9);
     g.fillCircle(6, 6, 1.5);
   }, 16, 16);
 

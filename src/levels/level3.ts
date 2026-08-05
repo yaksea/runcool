@@ -59,10 +59,22 @@ export const level3: LevelDef = {
     { x: 1100, y: 150, dir: -1 },
   ],
   spikes: [
-    { x: 560, y: 520, count: 2 },
-    { x: 1800, y: 400, count: 2 },
-    { x: 2300, y: 160, count: 2 },
-    { x: 700, y: 140, count: 2 },
+    { x: 520, y: 520, count: 4 },
+    { x: 620, y: 520, count: 3 },
+    { x: 1760, y: 400, count: 4 },
+    { x: 2260, y: 160, count: 4 },
+    { x: 680, y: 140, count: 3 },
+    { x: 1260, y: 480, count: 3 },
+  ],
+  flameVents: [
+    { x: 800, y: 480, intervalMs: 700, height: 145 },
+    { x: 2040, y: 360, intervalMs: 650, height: 140 },
+    { x: 1300, y: 140, intervalMs: 750, height: 130 },
+  ],
+  acidPools: [
+    { x: 1000, y: 520, w: 88 },
+    { x: 2500, y: 360, w: 84 },
+    { x: 960, y: 160, w: 80 },
   ],
   pads: [
     { x: 1480, y: 416 },

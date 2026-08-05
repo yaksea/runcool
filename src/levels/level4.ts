@@ -49,27 +49,38 @@ export const level4: LevelDef = {
   ],
   gates: [{ id: 'gate4a', x: 400, y: 100, w: 26, h: 80 }],
   levers: [
-    { x: 200, y: 340, targetId: 'gate4a', targetType: 'gate' },
-    { x: 500, y: 800, targetId: 'cv4a', targetType: 'conveyor' },
-    { x: 340, y: 420, targetId: 'fan4', targetType: 'fan' },
+    { x: 450, y: 140, targetId: 'gate4a', targetType: 'gate' },
+    { x: 435, y: 800, targetId: 'cv4a', targetType: 'conveyor' },
+    { x: 500, y: 320, targetId: 'fan4', targetType: 'fan' },
   ],
   breakables: [
     { x: 180, y: 580, w: 44, h: 50, hits: 1 },
     { x: 460, y: 280, w: 48, h: 52, hits: 2 },
   ],
-  geysers: [{ x: 360, y: 800, intervalMs: 1600, force: 720 }],
+  geysers: [{ x: 200, y: 860, intervalMs: 1600, force: 720 }],
+  flameVents: [
+    { x: 480, y: 560, intervalMs: 700, height: 140 },
+    { x: 200, y: 500, intervalMs: 650, height: 135 },
+    { x: 480, y: 200, intervalMs: 750, height: 130 },
+  ],
+  acidPools: [
+    { x: 200, y: 740, w: 84 },
+    { x: 550, y: 440, w: 88 },
+    { x: 220, y: 260, w: 80 },
+  ],
   spikes: [
-    { x: 480, y: 800, count: 2 },
-    { x: 180, y: 620, count: 2 },
-    { x: 460, y: 440, count: 2 },
+    { x: 500, y: 800, count: 3 },
+    { x: 160, y: 620, count: 4 },
+    { x: 420, y: 440, count: 3 },
+    { x: 180, y: 380, count: 3 },
   ],
   pads: [
     { x: 480, y: 656 },
     { x: 200, y: 356 },
   ],
   bumpers: [
-    { x: 360, y: 670, dir: 1 },
-    { x: 360, y: 310, dir: -1 },
+    { x: 500, y: 670, dir: 1 },
+    { x: 440, y: 260, dir: -1 },
   ],
   enemies: [
     { type: 'slime', x: 480, y: 760, patrol: 40 },

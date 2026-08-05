@@ -1,13 +1,20 @@
 import Phaser from 'phaser';
 import { PHYSICS } from '../style/theme';
 
-/** Safely retire a physics sprite outside the current Arcade step. */
+/** Safely retire a physics sprite outside the current Arcade step (idempotent). */
 export function retirePhysicsSprite(sprite: Phaser.Physics.Arcade.Sprite): void {
-  if (!sprite.active || sprite.getData('spent')) return;
+  if (!sprite || !sprite.scene) return;
+  // Already tearing down — avoid double destroy scheduling.
+  if (sprite.getData('retiring') === true) return;
+  sprite.setData('retiring', true);
   sprite.setData('spent', true);
-  sprite.disableBody(true, true);
+  if (sprite.body) {
+    sprite.disableBody(true, true);
+  } else {
+    sprite.setActive(false);
+    sprite.setVisible(false);
+  }
   const scene = sprite.scene;
-  if (!scene) return;
   scene.time.delayedCall(0, () => {
     if (sprite.scene) sprite.destroy();
   });
@@ -43,13 +50,16 @@ export function fireProjectile(
   const body = sprite.body as Phaser.Physics.Arcade.Body;
   body.setAllowGravity(false);
   // Elongate along travel so fast shots don't tunnel through small flyers.
+  // Compensate Arcade's scale×size so a big fireball sprite doesn't get a huge hitbox.
+  const sx = Math.abs(sprite.scaleX) || 1;
+  const sy = Math.abs(sprite.scaleY) || 1;
   const vx = opts.dir * opts.speed;
   const vy = opts.vy ?? (opts.homing ? -40 : 0);
   const horizontal = Math.abs(vx) >= Math.abs(vy);
   if (horizontal) {
-    body.setSize(22, 14);
+    body.setSize(22 / sx, 14 / sy);
   } else {
-    body.setSize(14, 22);
+    body.setSize(14 / sx, 22 / sy);
   }
   sprite.setVelocity(vx, vy);
   if (opts.homing) sprite.setRotation(Math.atan2(vy, vx));

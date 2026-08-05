@@ -6,9 +6,8 @@ export type SkinId = 'default' | 'sky' | 'mint' | 'grape' | 'sun';
 export type ShapeId = 'square' | 'round' | 'diamond' | 'triangle' | 'pill' | 'hex';
 export type SkillId = 'blink' | 'haste' | 'flight';
 export type EquippedSkill = SkillId | 'none';
-/** Independent from K-skills; used with N. */
+/** Independent from K-skills; missile=M, orbit=N; both can be equipped. */
 export type SpecialId = 'missile' | 'orbit';
-export type EquippedSpecial = SpecialId | 'none';
 
 export type SaveData = {
   version: 1;
@@ -23,13 +22,16 @@ export type SaveData = {
   ownedSkills: SkillId[];
   equippedSkill: EquippedSkill;
   ownedSpecials: SpecialId[];
-  equippedSpecial: EquippedSpecial;
+  /** Missile and orbit can both be equipped at once. */
+  equippedSpecials: SpecialId[];
   /** Missile cooldown upgrade level 0–8 (each level −0.5s cooldown). */
   missileLevel: number;
   /** Missile salvo upgrade level 0–8 (each level +0.5 missiles/shot, floored). */
   missileSalvoLevel: number;
   /** Orbit-missile storage upgrade 0–8 (capacity = 1 + level). */
   orbitLevel: number;
+  /** Newbie proximity tips (can be dismissed anytime). */
+  tutorialAssist: boolean;
   levels: Record<
     string,
     {
@@ -56,7 +58,7 @@ const ALL_SPECIALS: SpecialId[] = ['missile', 'orbit'];
 function defaultSave(): SaveData {
   return {
     version: 1,
-    unlockedMax: 1,
+    unlockedMax: 0,
     coins: 0,
     inventory: [],
     equipped: 'none',
@@ -67,10 +69,11 @@ function defaultSave(): SaveData {
     ownedSkills: [],
     equippedSkill: 'none',
     ownedSpecials: [],
-    equippedSpecial: 'none',
+    equippedSpecials: [],
     missileLevel: 0,
     missileSalvoLevel: 0,
     orbitLevel: 0,
+    tutorialAssist: true,
     levels: {},
     activeRun: null,
   };
@@ -170,10 +173,27 @@ function normalizeSpecials(list: unknown): SpecialId[] {
   return out;
 }
 
-function normalizeEquippedSpecial(w: unknown, owned: SpecialId[]): EquippedSpecial {
-  if (w === 'none' || w == null) return 'none';
-  if (ALL_SPECIALS.includes(w as SpecialId) && owned.includes(w as SpecialId)) return w as SpecialId;
-  return 'none';
+function normalizeEquippedSpecials(
+  list: unknown,
+  owned: SpecialId[],
+  legacySingle?: unknown,
+): SpecialId[] {
+  const raw = Array.isArray(list)
+    ? list
+    : legacySingle && legacySingle !== 'none'
+      ? [legacySingle]
+      : [];
+  const out: SpecialId[] = [];
+  for (const item of raw) {
+    if (
+      ALL_SPECIALS.includes(item as SpecialId) &&
+      owned.includes(item as SpecialId) &&
+      !out.includes(item as SpecialId)
+    ) {
+      out.push(item as SpecialId);
+    }
+  }
+  return out;
 }
 
 export const SaveSystem = {
@@ -187,6 +207,7 @@ export const SaveSystem = {
       const ownedShapes = normalizeShapes(data.ownedShapes);
       const ownedSkills = normalizeSkills(data.ownedSkills);
       const ownedSpecials = normalizeSpecials(data.ownedSpecials);
+      const legacy = data as SaveData & { equippedSpecial?: unknown };
       const merged: SaveData = {
         ...defaultSave(),
         ...data,
@@ -201,7 +222,11 @@ export const SaveSystem = {
         ownedSkills,
         equippedSkill: normalizeEquippedSkill(data.equippedSkill, ownedSkills),
         ownedSpecials,
-        equippedSpecial: normalizeEquippedSpecial(data.equippedSpecial, ownedSpecials),
+        equippedSpecials: normalizeEquippedSpecials(
+          data.equippedSpecials,
+          ownedSpecials,
+          legacy.equippedSpecial,
+        ),
         missileLevel: ownedSpecials.includes('missile')
           ? normalizeMissileLevel(data.missileLevel)
           : 0,
@@ -211,6 +236,7 @@ export const SaveSystem = {
         orbitLevel: ownedSpecials.includes('orbit')
           ? normalizeOrbitLevel(data.orbitLevel)
           : 0,
+        tutorialAssist: data.tutorialAssist !== false,
       };
       if (merged.activeRun) {
         merged.activeRun.weapon = normalizeWeapon(merged.activeRun.weapon);
@@ -328,22 +354,41 @@ export const SaveSystem = {
   buySpecial(id: SpecialId, price: number): { ok: boolean; reason?: string; data: SaveData } {
     const data = this.load();
     if (data.ownedSpecials.includes(id)) {
-      data.equippedSpecial = id;
+      if (!data.equippedSpecials.includes(id)) data.equippedSpecials.push(id);
       this.save(data);
       return { ok: true, data };
     }
     if (data.coins < price) return { ok: false, reason: 'coins', data };
     data.coins -= price;
     data.ownedSpecials.push(id);
-    data.equippedSpecial = id;
+    if (!data.equippedSpecials.includes(id)) data.equippedSpecials.push(id);
     this.save(data);
     return { ok: true, data };
   },
 
-  equipSpecial(id: EquippedSpecial): SaveData {
+  /** Equip one special without unequipping the other. */
+  equipSpecial(id: SpecialId): SaveData {
     const data = this.load();
-    if (id !== 'none' && !data.ownedSpecials.includes(id)) return data;
-    data.equippedSpecial = id;
+    if (!data.ownedSpecials.includes(id)) return data;
+    if (!data.equippedSpecials.includes(id)) data.equippedSpecials.push(id);
+    this.save(data);
+    return data;
+  },
+
+  unequipSpecial(id: SpecialId): SaveData {
+    const data = this.load();
+    data.equippedSpecials = data.equippedSpecials.filter((s) => s !== id);
+    this.save(data);
+    return data;
+  },
+
+  isSpecialEquipped(id: SpecialId): boolean {
+    return this.load().equippedSpecials.includes(id);
+  },
+
+  setTutorialAssist(enabled: boolean): SaveData {
+    const data = this.load();
+    data.tutorialAssist = enabled;
     this.save(data);
     return data;
   },

@@ -55,7 +55,7 @@ export const level6: LevelDef = {
     { id: 'p6a', x: 2100, y: 360, pairId: 'p6b' },
     { id: 'p6b', x: 700, y: 160, pairId: 'p6a' },
   ],
-  geysers: [{ x: 1400, y: 460, intervalMs: 1500, force: 760 }],
+    
   timedPlatforms: [
     { x: 1700, y: 340, w: 100, h: 20, onMs: 1100, offMs: 700 },
     { x: 500, y: 280, w: 100, h: 20, onMs: 1200, offMs: 750 },
@@ -63,43 +63,41 @@ export const level6: LevelDef = {
   gates: [
     { id: 'gate6a', x: 200, y: 80, w: 26, h: 90 },
   ],
-  levers: [
-    { x: 160, y: 180, targetId: 'gate6a', targetType: 'gate' },
-    { x: 860, y: 520, targetId: 'cv6a', targetType: 'conveyor' },
-    { x: 1740, y: 400, targetId: 'fan6a', targetType: 'fan' },
+      levers: [
+    { x: 150, y: 180, targetId: 'gate6a', targetType: 'gate' },
+    { x: 907, y: 480, targetId: 'cv6a', targetType: 'conveyor' },
+    { x: 1647, y: 500, targetId: 'fan6a', targetType: 'fan' },
   ],
   breakables: [
     { x: 1320, y: 400, w: 48, h: 56, hits: 1 },
     { x: 1000, y: 160, w: 50, h: 54, hits: 2 },
     { x: 280, y: 140, w: 48, h: 52, hits: 1 },
   ],
-  crumbles: [
+    crumbles: [
     { x: 680, y: 500, w: 90, h: 22 },
-    { x: 1400, y: 220, w: 90, h: 22 },
   ],
-  bumpers: [
-    { x: 820, y: 480, dir: 1 },
-    { x: 2160, y: 260, dir: -1 },
+        bumpers: [
+    { x: 410, y: 200, dir: 1 },
   ],
-  spikes: [
-    { x: 920, y: 480, count: 3 },
-    { x: 1540, y: 500, count: 3 },
-    { x: 1880, y: 220, count: 3 },
-    { x: 480, y: 180, count: 3 },
-    { x: 2200, y: 400, count: 3 },
-    { x: 1300, y: 220, count: 3 },
+      spikes: [
+    { x: 947, y: 360, count: 3 },
+    { x: 1660, y: 240, count: 3 },
+    { x: 1913, y: 220, count: 3 },
+    { x: 460, y: 200, count: 3 },
+    { x: 2213, y: 400, count: 3 },
+    { x: 1287, y: 320, count: 3 },
   ],
-  flameVents: [
-    { x: 1100, y: 520, intervalMs: 700, height: 145 },
-    { x: 1860, y: 440, intervalMs: 650, height: 150 },
-    { x: 1000, y: 220, intervalMs: 700, height: 130 },
-    { x: 2100, y: 400, intervalMs: 750, height: 135 },
+        flameVents: [
+    { x: 1313, y: 200, intervalMs: 700, height: 145 },
+    { x: 1920, y: 440, intervalMs: 650, height: 150 },
+    { x: 2193, y: 260, intervalMs: 700, height: 130 },
+    { x: 465, y: 560, intervalMs: 750, height: 135 },
   ],
-  acidPools: [
-    { x: 620, y: 520, w: 84 },
-    { x: 1660, y: 500, w: 88 },
-    { x: 800, y: 180, w: 80 },
-    { x: 1580, y: 240, w: 86 },
+        acidPools: [
+    { x: 355, y: 560, w: 84 },
+  ],
+  geysers: [
+    { x: 618, y: 520, intervalMs: 1600, force: 720 },
   ],
   pads: [
     { x: 1100, y: 496 },

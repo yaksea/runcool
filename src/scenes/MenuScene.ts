@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ZH, shapeLabel, skinLabel, skillDesc, skillLabel, specialDesc, specialLabel } from '../i18n/zh';
+import { ZH, shapeLabel, skinLabel, skillDesc, skillLabel, specialDesc, specialLabel, petDesc, petLabel, shieldDesc, shieldLabel, passiveDesc, passiveLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { isTutorialLevel, LEVELS } from '../levels';
 import {
@@ -9,6 +9,9 @@ import {
   MISSILE_UPGRADE_PRICE,
   ORBIT_MAX_LEVEL,
   ORBIT_UPGRADE_PRICE,
+  PASSIVES,
+  PETS,
+  SHIELDS,
   SHAPES,
   SKILLS,
   SKINS,
@@ -16,23 +19,30 @@ import {
   missileCooldownMs,
   missileSalvoCount,
   orbitCapacity,
-  orbitShieldsUnlocked,
+  shieldsUnlocked,
   shapeById,
   skinById,
 } from '../game/shopCatalog';
 import {
   SaveSystem,
+  type EquippedPassive,
+  type EquippedPet,
   type EquippedSkill,
+  type PassiveId,
+  type PetId,
   type ShapeId,
+  type ShieldId,
   type SkinId,
   type SkillId,
   type SpecialId,
 } from '../systems/SaveSystem';
 import { SoundSystem } from '../systems/SoundSystem';
 
+type ShopTab = 'look' | 'skills' | 'specials' | 'pets' | 'passives';
+
 export class MenuScene extends Phaser.Scene {
   private mode: 'main' | 'levels' | 'confirmClear' | 'shop' = 'main';
-  private shopTab: 'look' | 'skills' | 'specials' = 'look';
+  private shopTab: ShopTab = 'look';
   private shopMsg = '';
 
   constructor() {
@@ -308,9 +318,11 @@ export class MenuScene extends Phaser.Scene {
 
     if (this.shopTab === 'look') this.renderShopLook(save);
     else if (this.shopTab === 'skills') this.renderShopSkills(save, width);
-    else this.renderShopSpecials(save, width);
+    else if (this.shopTab === 'specials') this.renderShopSpecials(save, width);
+    else if (this.shopTab === 'pets') this.renderShopPets(save, width);
+    else this.renderShopPassives(save, width);
 
-    this.makeButton(width / 2, 512, ZH.back, () => {
+    this.makeButton(width / 2, 528, ZH.back, () => {
       this.mode = 'main';
       this.shopMsg = '';
       this.setHeroVisible(true);
@@ -319,23 +331,26 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private renderShopTabs(width: number): void {
-    const tabs: { id: typeof this.shopTab; label: string }[] = [
+    const tabs: { id: ShopTab; label: string }[] = [
       { id: 'look', label: ZH.shopTabLook },
       { id: 'skills', label: ZH.shopTabSkills },
       { id: 'specials', label: ZH.shopTabSpecials },
+      { id: 'pets', label: ZH.shopTabPets },
+      { id: 'passives', label: ZH.shopTabPassives },
     ];
-    const startX = width / 2 - 140;
+    const gap = 92;
+    const startX = width / 2 - ((tabs.length - 1) * gap) / 2;
     tabs.forEach((tab, i) => {
-      const x = startX + i * 140;
+      const x = startX + i * gap;
       const active = this.shopTab === tab.id;
       const bg = this.add
-        .rectangle(x, 88, 120, 32, active ? THEME.button : 0xffffff, active ? 1 : 0.85)
+        .rectangle(x, 88, 84, 32, active ? THEME.button : 0xffffff, active ? 1 : 0.85)
         .setStrokeStyle(2, THEME.playerStroke)
         .setInteractive({ useHandCursor: true });
       const text = this.add
         .text(x, 88, tab.label, {
           fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-          fontSize: '15px',
+          fontSize: '13px',
           color: active ? THEME.uiLight : '#1f2d3d',
           fontStyle: active ? 'bold' : 'normal',
         })
@@ -530,8 +545,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private renderShopSpecials(save: ReturnType<typeof SaveSystem.load>, width: number): void {
-    this.shopSectionTitle(40, 118, ZH.shopSpecials);
-    this.shopHint(40, 140, ZH.shopSpecialsHint, 880);
+    this.shopSectionTitle(40, 110, ZH.shopSpecials);
+    this.shopHint(40, 128, ZH.shopSpecialsHint, 880);
 
     const btnX = width - 90;
     const textW = width - 220;
@@ -539,7 +554,7 @@ export class MenuScene extends Phaser.Scene {
     SPECIALS.forEach((spec, i) => {
       const owned = save.ownedSpecials.includes(spec.id);
       const equipped = save.equippedSpecials.includes(spec.id);
-      const blockTop = 172 + i * 150;
+      const blockTop = 152 + i * 118;
 
       let title = `${specialLabel(spec.id)} · ${spec.price}`;
       if (owned && spec.id === 'missile') {
@@ -570,15 +585,12 @@ export class MenuScene extends Phaser.Scene {
           missileSalvoCount(save.missileSalvoLevel),
         );
       } else if (owned && spec.id === 'orbit') {
-        detail = [
-          ZH.specialOrbitLv(save.orbitLevel, ORBIT_MAX_LEVEL, orbitCapacity(save.orbitLevel)),
-          orbitShieldsUnlocked(save) ? ZH.specialOrbitShieldPerk : ZH.specialOrbitShieldLocked,
-        ].join('\n');
+        detail = ZH.specialOrbitLv(save.orbitLevel, ORBIT_MAX_LEVEL, orbitCapacity(save.orbitLevel));
       }
 
       this.tag(
         this.add
-          .text(56, blockTop + 24, detail, {
+          .text(56, blockTop + 22, detail, {
             fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
             fontSize: '12px',
             color: '#566573',
@@ -588,25 +600,24 @@ export class MenuScene extends Phaser.Scene {
           .setOrigin(0, 0),
       );
 
-      // 右侧操作列：装备 / 购买，下方升级，互不重叠
       if (!owned) {
-        this.makeButton(btnX, blockTop + 36, `${ZH.buy} ${spec.price}`, () => {
+        this.makeButton(btnX, blockTop + 28, `${ZH.buy} ${spec.price}`, () => {
           this.onBuySpecial(spec.id, spec.price);
-        }, 96, 30);
+        }, 96, 28);
         return;
       }
 
       if (equipped) {
-        this.makeButton(btnX, blockTop + 8, ZH.unequip, () => this.onUnequipSpecial(spec.id), 96, 28);
+        this.makeButton(btnX, blockTop + 4, ZH.unequip, () => this.onUnequipSpecial(spec.id), 96, 26);
       } else {
-        this.makeButton(btnX, blockTop + 8, '装备', () => this.onEquipSpecial(spec.id), 96, 28);
+        this.makeButton(btnX, blockTop + 4, '装备', () => this.onEquipSpecial(spec.id), 96, 26);
       }
 
       if (spec.id === 'missile') {
         if (save.missileLevel >= MISSILE_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(btnX, blockTop + 52, `冷却 ${ZH.specialMaxLevel}`, {
+              .text(btnX, blockTop + 40, `冷却 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -616,17 +627,17 @@ export class MenuScene extends Phaser.Scene {
         } else {
           this.makeButton(
             btnX,
-            blockTop + 52,
+            blockTop + 40,
             ZH.specialUpgradeCd(MISSILE_UPGRADE_PRICE),
             () => this.onUpgradeMissile(),
             96,
-            26,
+            24,
           );
         }
         if (save.missileSalvoLevel >= MISSILE_SALVO_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(btnX, blockTop + 88, `齐射 ${ZH.specialMaxLevel}`, {
+              .text(btnX, blockTop + 70, `齐射 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -636,18 +647,18 @@ export class MenuScene extends Phaser.Scene {
         } else {
           this.makeButton(
             btnX,
-            blockTop + 88,
+            blockTop + 70,
             ZH.specialUpgradeSalvo(MISSILE_SALVO_UPGRADE_PRICE),
             () => this.onUpgradeMissileSalvo(),
             96,
-            26,
+            24,
           );
         }
       } else if (spec.id === 'orbit') {
         if (save.orbitLevel >= ORBIT_MAX_LEVEL) {
           this.tag(
             this.add
-              .text(btnX, blockTop + 52, `存储 ${ZH.specialMaxLevel}`, {
+              .text(btnX, blockTop + 40, `存储 ${ZH.specialMaxLevel}`, {
                 fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
                 fontSize: '11px',
                 color: '#27ae60',
@@ -657,14 +668,178 @@ export class MenuScene extends Phaser.Scene {
         } else {
           this.makeButton(
             btnX,
-            blockTop + 52,
+            blockTop + 40,
             ZH.specialUpgradeOrbit(ORBIT_UPGRADE_PRICE),
             () => this.onUpgradeOrbit(),
             96,
-            26,
+            24,
           );
         }
       }
+    });
+
+    // Shields — independent of orbit missiles.
+    const shieldTop = 400;
+    const unlocked = shieldsUnlocked(save);
+    this.shopSectionTitle(40, shieldTop, ZH.shopShields);
+    if (!unlocked) {
+      this.shopHint(40, shieldTop + 22, ZH.shopShieldsLocked, 880);
+      return;
+    }
+
+    SHIELDS.forEach((shield, i) => {
+      const y = shieldTop + 48 + i * 36;
+      const equipped = save.equippedShields.includes(shield.id);
+      this.tag(
+        this.add
+          .text(56, y, `${shieldLabel(shield.id)} · ${shieldDesc(shield.id)}`, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '13px',
+            color: '#1f2d3d',
+          })
+          .setOrigin(0, 0.5),
+      );
+      if (equipped) {
+        this.makeButton(btnX, y, ZH.unequip, () => this.onUnequipShield(shield.id), 88, 28);
+      } else {
+        this.makeButton(btnX, y, '装备', () => this.onEquipShield(shield.id), 88, 28);
+      }
+    });
+  }
+
+  private renderShopPets(save: ReturnType<typeof SaveSystem.load>, width: number): void {
+    this.shopSectionTitle(40, 118, ZH.shopPets);
+    this.shopHint(40, 140, ZH.shopPetsHint, 880);
+
+    const btnX = width - 90;
+    const textW = btnX - 160;
+
+    {
+      const y = 178;
+      this.tag(
+        this.add
+          .text(56, y, ZH.petNone, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '14px',
+            color: '#1f2d3d',
+          })
+          .setOrigin(0, 0.5),
+      );
+      if (save.equippedPet === 'none') {
+        this.tag(
+          this.add
+            .text(btnX, y, ZH.equipped, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '13px',
+              color: '#27ae60',
+              fontStyle: 'bold',
+            })
+            .setOrigin(0.5),
+        );
+      } else {
+        this.makeButton(btnX, y, ZH.unequip, () => this.onEquipPet('none'), 88, 30);
+      }
+    }
+
+    PETS.forEach((pet, i) => {
+      const owned = save.ownedPets.includes(pet.id);
+      const equipped = save.equippedPet === pet.id;
+      const y = 230 + i * 70;
+      this.tag(
+        this.add
+          .text(56, y - 12, `${petLabel(pet.id)} · ${pet.price}`, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '14px',
+            color: '#1f2d3d',
+            fontStyle: 'bold',
+          })
+          .setOrigin(0, 0.5),
+      );
+      this.tag(
+        this.add
+          .text(56, y + 12, petDesc(pet.id), {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#566573',
+            wordWrap: { width: textW },
+          })
+          .setOrigin(0, 0.5),
+      );
+      this.shopStatusOrButton(btnX, y, {
+        equipped,
+        owned,
+        buyLabel: `${ZH.buy} ${pet.price}`,
+        onEquip: () => this.onEquipPet(pet.id),
+        onBuy: () => this.onBuyPet(pet.id, pet.price),
+      });
+    });
+  }
+
+  private renderShopPassives(save: ReturnType<typeof SaveSystem.load>, width: number): void {
+    this.shopSectionTitle(40, 118, ZH.shopPassives);
+    this.shopHint(40, 140, ZH.shopPassivesHint, 880);
+
+    const btnX = width - 90;
+    const textW = btnX - 160;
+
+    {
+      const y = 190;
+      this.tag(
+        this.add
+          .text(56, y, ZH.passiveNone, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '14px',
+            color: '#1f2d3d',
+          })
+          .setOrigin(0, 0.5),
+      );
+      if (save.equippedPassive === 'none') {
+        this.tag(
+          this.add
+            .text(btnX, y, ZH.equipped, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '13px',
+              color: '#27ae60',
+              fontStyle: 'bold',
+            })
+            .setOrigin(0.5),
+        );
+      } else {
+        this.makeButton(btnX, y, ZH.unequip, () => this.onEquipPassive('none'), 88, 30);
+      }
+    }
+
+    PASSIVES.forEach((passive, i) => {
+      const owned = save.ownedPassives.includes(passive.id);
+      const equipped = save.equippedPassive === passive.id;
+      const y = 248 + i * 96;
+      this.tag(
+        this.add
+          .text(56, y - 14, `${passiveLabel(passive.id)} · ${passive.price}`, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '15px',
+            color: '#1f2d3d',
+            fontStyle: 'bold',
+          })
+          .setOrigin(0, 0.5),
+      );
+      this.tag(
+        this.add
+          .text(56, y + 14, passiveDesc(passive.id), {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#566573',
+            wordWrap: { width: textW },
+          })
+          .setOrigin(0, 0.5),
+      );
+      this.shopStatusOrButton(btnX, y, {
+        equipped,
+        owned,
+        buyLabel: `${ZH.buy} ${passive.price}`,
+        onEquip: () => this.onEquipPassive(passive.id),
+        onBuy: () => this.onBuyPassive(passive.id, passive.price),
+      });
     });
   }
 
@@ -704,6 +879,30 @@ export class MenuScene extends Phaser.Scene {
     this.renderShop();
   }
 
+  private onBuyPet(id: PetId, price: number): void {
+    const result = SaveSystem.buyPet(id, price);
+    this.shopMsg = result.ok ? '' : ZH.notEnoughCoins;
+    this.renderShop();
+  }
+
+  private onEquipPet(id: EquippedPet): void {
+    SaveSystem.equipPet(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onBuyPassive(id: PassiveId, price: number): void {
+    const result = SaveSystem.buyPassive(id, price);
+    this.shopMsg = result.ok ? '' : ZH.notEnoughCoins;
+    this.renderShop();
+  }
+
+  private onEquipPassive(id: EquippedPassive): void {
+    SaveSystem.equipPassive(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
   private onBuySpecial(id: SpecialId, price: number): void {
     const result = SaveSystem.buySpecial(id, price);
     this.shopMsg = result.ok ? '' : ZH.notEnoughCoins;
@@ -718,6 +917,18 @@ export class MenuScene extends Phaser.Scene {
 
   private onUnequipSpecial(id: SpecialId): void {
     SaveSystem.unequipSpecial(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onEquipShield(id: ShieldId): void {
+    SaveSystem.equipShield(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onUnequipShield(id: ShieldId): void {
+    SaveSystem.unequipShield(id);
     this.shopMsg = '';
     this.renderShop();
   }

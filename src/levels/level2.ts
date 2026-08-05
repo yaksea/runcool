@@ -38,26 +38,28 @@ export const level2: LevelDef = {
   seesaws: [{ x: 1300, y: 380, w: 200 }],
   conveyors: [{ x: 1100, y: 640, w: 160, h: 26, dir: -1, speed: 160 }],
   fans: [{ x: 880, y: 480, w: 64, h: 140, force: 16 }],
-  crumbles: [
+    crumbles: [
     { x: 640, y: 300, w: 90, h: 22 },
     { x: 1540, y: 560, w: 90, h: 22 },
   ],
-  bumpers: [{ x: 1580, y: 450, dir: -1 }],
-  spikes: [
-    { x: 760, y: 320, count: 4 },
-    { x: 1180, y: 600, count: 4 },
-    { x: 1280, y: 600, count: 3 },
-    { x: 380, y: 680, count: 4 },
-    { x: 520, y: 680, count: 3 },
+      bumpers: [
+    { x: 1760, y: 460, dir: -1 },
   ],
-  flameVents: [
-    { x: 1020, y: 280, intervalMs: 700, height: 140 },
-    { x: 900, y: 640, intervalMs: 650, height: 145 },
-    { x: 1460, y: 560, intervalMs: 750, height: 130 },
+      spikes: [
+    { x: 820, y: 320, count: 4 },
+    { x: 1160, y: 600, count: 4 },
+    { x: 1467, y: 400, count: 3 },
+    { x: 385, y: 700, count: 4 },
+    { x: 580, y: 680, count: 3 },
   ],
-  acidPools: [
-    { x: 540, y: 280, w: 84 },
-    { x: 660, y: 680, w: 90 },
+      flameVents: [
+    { x: 1007, y: 280, intervalMs: 700, height: 140 },
+    { x: 543, y: 280, intervalMs: 650, height: 145 },
+    { x: 1467, y: 560, intervalMs: 750, height: 130 },
+  ],
+      acidPools: [
+    { x: 393, y: 240, w: 84 },
+    { x: 275, y: 700, w: 90 },
   ],
   pads: [
     { x: 1000, y: 256 },
@@ -68,6 +70,8 @@ export const level2: LevelDef = {
     { type: 'hopper', x: 1240, y: 300, patrol: 55 },
     { type: 'slime', x: 900, y: 600, patrol: 50 },
     { type: 'floater', x: 1500, y: 220, patrol: 70 },
+    { type: 'slime', x: 300, y: 700, patrol: 40 },
+    { type: 'hopper', x: 1600, y: 420, patrol: 45 },
   ],
   weapons: [
     { type: 'glove', x: 980, y: 240 },

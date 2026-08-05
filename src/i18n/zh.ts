@@ -116,6 +116,35 @@ export const ZH = {
   shopTabLook: '外观',
   shopTabSkills: '技能',
   shopTabSpecials: '特殊',
+  shopTabPets: '宠物',
+  shopTabPassives: '神技',
+  shopPassives: '神技（同时只能装一个）',
+  shopPassivesHint: '花费十万金币解锁；永恒无敌全程生效，末日核爆按 L 发射',
+  passiveNone: '无神技',
+  passiveImmortal: '永恒无敌',
+  passiveImmortalDesc: '装备后永久无敌：不受伤害，掉崖也会安全回到存档点',
+  passiveNuke: '末日核爆',
+  passiveNukeDesc: '按 L 发射核弹：升空爆炸后清空全场怪兽，刷怪点留下毒区（怪每秒 -1 血）；冷却 20 秒',
+  noNukeEquipped: '未装备末日核爆',
+  nukeCooldown: '核爆冷却中',
+  nukeLaunching: '核弹升空中…',
+  shopPets: '宠物（同时只能带一只）',
+  shopPetsHint: '购买后点「装备」；卸下可空手出门',
+  petNone: '无宠物',
+  petKitten: '小猫',
+  petSnowman: '雪人',
+  petFish: '活蹦乱跳的鱼',
+  petKittenDesc: '跟随产出金币',
+  petSnowmanDesc: '冻结可视范围内所有敌人 2 秒，并扣除其 1/3 血量（向上取整）；冷却 5 秒',
+  petFishDesc: '积满 8 泡环绕；可视范围内有敌人则齐射持续攻击，清屏后再飞回转圈',
+  petMenuTitle: '宠物指令',
+  petMenuHint: '关卡内点击宠物可切换',
+  petModePlay: '和它玩耍',
+  petModeAttack: '攻击敌人',
+  petModeQuiet: '安静下来',
+  petModePlayToast: '开始和宠物玩耍',
+  petModeAttackToast: '宠物开始攻击敌人',
+  petModeQuietToast: '宠物安静跟随，不再攻击',
   shopSkills: 'K 技能（同时只能装一个）',
   shopSkillsHint: '购买后点「装备」；卸下可空手',
   skinDefault: '经典橙',
@@ -137,10 +166,16 @@ export const ZH = {
   skillHasteDesc: 'K：短时大幅加速',
   skillFlightDesc: 'K：短时自由飞行',
   shopSpecials: '特殊技能',
-  shopSpecialsHint: '可同时装备 · M 齐射追踪 · N 环绕导弹',
+  shopSpecialsHint: '可同时装备 · M 齐射追踪 · N 环绕导弹 · 护盾可单独装配',
   shopLookHint: '形状与颜色可自由搭配',
-  specialOrbitShieldPerk: '护盾已解锁：反弹子弹 + 弹怪',
-  specialOrbitShieldLocked: '护盾需买齐商店全部内容',
+  shopShields: '护盾（可单独装配，无需环绕导弹）',
+  shopShieldsLocked: '买齐商店可购内容（外观、技能、特殊并升满）后解锁两种护盾',
+  shieldReflect: '反弹护盾',
+  shieldRepulse: '弹怪护盾',
+  shieldReflectDesc: '反弹敌人子弹，反弹弹可伤怪',
+  shieldRepulseDesc: '靠近的敌人会被弹开',
+  specialOrbitShieldPerk: '护盾已在下方单独装配',
+  specialOrbitShieldLocked: '护盾需买齐商店可购内容（外观/技能/特殊并升满）后解锁',
   special: '特殊',
   specialNone: '无特殊技能',
   specialMissile: '追踪导弹',
@@ -155,8 +190,7 @@ export const ZH = {
   ) =>
     `冷却 Lv.${cdLv}/${cdMax} ${cdSec}s · 齐射 Lv.${salvoLv}/${salvoMax} 每次${salvoCount}发`,
   specialOrbit: '环绕导弹',
-  specialOrbitDesc:
-    'N 装填环绕弹，遇敌出击（可与 M 齐射同装）；买齐商店全部内容后解锁蓝色反弹子弹护盾 + 弹怪护盾',
+  specialOrbitDesc: 'N 装填环绕弹，遇敌出击（可与 M 齐射同装）；护盾请在下方单独装配',
   specialOrbitLv: (lv: number, max: number, cap: number) =>
     `存储 Lv.${lv}/${max} · 最多环绕 ${cap} 枚`,
   specialUpgrade: (price: number) => `升级 ${price}`,
@@ -213,7 +247,7 @@ export const ZH = {
   rating: '评价',
   nextLevel: '下一关',
   playAgain: '再玩一次',
-  controls: 'A/D 移动，空格跳，X 互动，J 攻击，K 技能，M 齐射，N 环绕，B 背包，P 暂停',
+  controls: 'A/D 移动，空格跳，X 互动，J 攻击，K 技能，M 齐射，N 环绕，L 核爆，B 背包，P 暂停',
   interactBreak: '按 X 破坏',
   interactControl: '按 X 操控',
   brokeBlock: '机关已破坏！',
@@ -248,6 +282,39 @@ export function weaponLabel(
       return ZH.weaponShotgun;
     default:
       return ZH.weaponNone;
+  }
+}
+
+/** Compact labels for in-level HUD only. */
+export function hudWeaponShort(
+  weapon: 'none' | 'glove' | 'peashooter' | 'hammer' | 'fireball' | 'shotgun',
+): string {
+  switch (weapon) {
+    case 'glove':
+      return '拳套';
+    case 'peashooter':
+      return '弹珠';
+    case 'hammer':
+      return '重锤';
+    case 'fireball':
+      return '火球';
+    case 'shotgun':
+      return '散射';
+    default:
+      return '徒手';
+  }
+}
+
+export function hudSkillShort(id: 'none' | 'blink' | 'haste' | 'flight'): string {
+  switch (id) {
+    case 'blink':
+      return '瞬移';
+    case 'haste':
+      return '加速';
+    case 'flight':
+      return '飞行';
+    default:
+      return '无';
   }
 }
 
@@ -344,4 +411,51 @@ export function specialDesc(id: 'missile' | 'orbit'): string {
     case 'orbit':
       return ZH.specialOrbitDesc;
   }
+}
+
+export function petLabel(id: 'none' | 'kitten' | 'snowman' | 'fish'): string {
+  switch (id) {
+    case 'kitten':
+      return ZH.petKitten;
+    case 'snowman':
+      return ZH.petSnowman;
+    case 'fish':
+      return ZH.petFish;
+    default:
+      return ZH.petNone;
+  }
+}
+
+export function petDesc(id: 'kitten' | 'snowman' | 'fish'): string {
+  switch (id) {
+    case 'kitten':
+      return ZH.petKittenDesc;
+    case 'snowman':
+      return ZH.petSnowmanDesc;
+    case 'fish':
+      return ZH.petFishDesc;
+  }
+}
+
+export function shieldLabel(id: 'reflect' | 'repulse'): string {
+  return id === 'reflect' ? ZH.shieldReflect : ZH.shieldRepulse;
+}
+
+export function shieldDesc(id: 'reflect' | 'repulse'): string {
+  return id === 'reflect' ? ZH.shieldReflectDesc : ZH.shieldRepulseDesc;
+}
+
+export function passiveLabel(id: 'none' | 'immortal' | 'nuke'): string {
+  switch (id) {
+    case 'immortal':
+      return ZH.passiveImmortal;
+    case 'nuke':
+      return ZH.passiveNuke;
+    default:
+      return ZH.passiveNone;
+  }
+}
+
+export function passiveDesc(id: 'immortal' | 'nuke'): string {
+  return id === 'nuke' ? ZH.passiveNukeDesc : ZH.passiveImmortalDesc;
 }

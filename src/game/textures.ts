@@ -679,6 +679,20 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillCircle(50, 13, 1.5);
   }, 72, 24);
 
+  ensure(scene, 'toxic_zone', (g) => {
+    g.fillStyle(0x6c3483, 0.92);
+    g.fillEllipse(40, 18, 76, 28);
+    g.fillStyle(0x9b59b6, 0.9);
+    g.fillEllipse(40, 16, 58, 18);
+    g.fillStyle(0xd2b4de, 0.7);
+    g.fillEllipse(30, 13, 16, 7);
+    g.fillEllipse(52, 15, 12, 6);
+    g.fillStyle(0x58d68d, 0.65);
+    g.fillCircle(24, 14, 2.2);
+    g.fillCircle(56, 16, 1.8);
+    g.fillCircle(40, 12, 1.6);
+  }, 80, 32);
+
   ensure(scene, 'timed_platform', (g) => {
     g.fillStyle(0x5dade2, 1);
     g.fillRoundedRect(0, 8, 64, 36, 4);
@@ -766,6 +780,24 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillRect(8, 8, 8, 4);
   }, 36, 20);
 
+  replace(scene, 'nuke', (g) => {
+    // Fat warhead — reads clearly while rising on launch.
+    g.fillStyle(0x2c3e50, 1);
+    g.fillRoundedRect(10, 4, 20, 40, 6);
+    g.fillStyle(0xe74c3c, 1);
+    g.fillRoundedRect(10, 4, 20, 16, 6);
+    g.fillStyle(0xf1c40f, 1);
+    g.fillRect(10, 20, 20, 6);
+    g.fillStyle(0xecf0f1, 1);
+    g.fillRoundedRect(12, 28, 16, 14, 4);
+    g.fillStyle(0x95a5a6, 1);
+    g.fillTriangle(10, 44, 20, 56, 30, 44);
+    g.fillStyle(0xe67e22, 1);
+    g.fillTriangle(12, 44, 20, 52, 28, 44);
+    g.fillStyle(0xffffff, 0.85);
+    g.fillCircle(20, 12, 3);
+  }, 40, 56);
+
   replace(scene, 'orbit_missile', (g) => {
     // Compact dart — reads cleaner when evenly spaced on a circle.
     g.fillStyle(0x16a085, 1);
@@ -778,6 +810,62 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillStyle(0x5dade2, 0.9);
     g.fillCircle(14, 10, 1.2);
   }, 36, 20);
+
+  replace(scene, 'pet_kitten', (g) => {
+    g.fillStyle(0xf5b041, 1);
+    g.fillEllipse(16, 20, 22, 18);
+    g.fillTriangle(6, 12, 10, 2, 14, 12);
+    g.fillTriangle(18, 12, 22, 2, 26, 12);
+    g.fillStyle(0xfad7a0, 1);
+    g.fillEllipse(16, 22, 12, 10);
+    drawCuteEyes(g, 11, 21, 18, 2.4);
+    g.fillStyle(0xe67e22, 1);
+    g.fillTriangle(16, 20, 14, 23, 18, 23);
+    g.lineStyle(1.5, 0xe67e22, 0.8);
+    g.lineBetween(4, 20, 10, 22);
+    g.lineBetween(22, 22, 28, 20);
+  }, 32, 32);
+
+  replace(scene, 'pet_snowman', (g) => {
+    g.fillStyle(0xecf0f1, 1);
+    g.fillCircle(16, 24, 10);
+    g.fillCircle(16, 14, 7);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(13, 13, 1.4);
+    g.fillCircle(19, 13, 1.4);
+    g.fillStyle(0xe67e22, 1);
+    g.fillTriangle(16, 15, 14, 18, 22, 16);
+    g.fillStyle(0x2c3e50, 1);
+    g.fillRect(10, 6, 12, 3);
+    g.fillRect(12, 2, 8, 5);
+    g.fillStyle(0xe74c3c, 1);
+    g.fillRect(18, 3, 6, 2);
+    g.lineStyle(2, 0x8b5a2b, 1);
+    g.lineBetween(6, 16, 10, 18);
+    g.lineBetween(22, 18, 26, 16);
+  }, 32, 32);
+
+  replace(scene, 'pet_fish', (g) => {
+    // Simple silhouette: blue body outline + one eye. No scales/fins clutter.
+    g.fillStyle(0x3498db, 1);
+    g.fillEllipse(16, 16, 22, 14);
+    g.fillTriangle(4, 16, 0, 10, 0, 22);
+    g.fillStyle(0x1a1a1a, 1);
+    g.fillCircle(22, 14, 2.6);
+    g.fillStyle(0xffffff, 0.95);
+    g.fillCircle(21.3, 13.3, 1);
+  }, 32, 32);
+
+  replace(scene, 'pet_wave', (g) => {
+    // Bubble projectile — same flat circle language as hazard_shot.
+    g.fillStyle(0x5dade2, 0.55);
+    g.fillCircle(12, 12, 11);
+    g.fillStyle(0x85c1e9, 0.7);
+    g.fillCircle(12, 12, 8);
+    g.fillStyle(0xffffff, 0.9);
+    g.fillCircle(8, 8, 3);
+    g.fillCircle(15, 7, 1.4);
+  }, 24, 24);
 
   replace(scene, 'explosion', (g) => {
     g.fillStyle(0xf39c12, 0.95);

@@ -1,13 +1,16 @@
 import type {
   InventoryWeapon,
+  PassiveId,
+  PetId,
   SaveData,
   ShapeId,
+  ShieldId,
   SkinId,
   SkillId,
   SpecialId,
 } from '../systems/SaveSystem';
 
-export type { ShapeId, SkinId, SkillId, SpecialId };
+export type { ShapeId, SkinId, SkillId, SpecialId, PetId, ShieldId, PassiveId };
 
 /** Every shop weapon that must be owned for full completion. */
 export const SHOP_WEAPONS: InventoryWeapon[] = [
@@ -76,6 +79,19 @@ export const SPECIALS: SpecialDef[] = [
   { id: 'orbit', price: 100, cooldownMs: 0 },
 ];
 
+export type PetDef = {
+  id: PetId;
+  price: number;
+  texture: string;
+};
+
+/** Companion pets — one equipped at a time. */
+export const PETS: PetDef[] = [
+  { id: 'kitten', price: 100, texture: 'pet_kitten' },
+  { id: 'snowman', price: 1000, texture: 'pet_snowman' },
+  { id: 'fish', price: 1000, texture: 'pet_fish' },
+];
+
 export const MISSILE_MAX_LEVEL = 8;
 export const MISSILE_UPGRADE_PRICE = 10;
 /** Cooldown reduction per upgrade level. */
@@ -108,6 +124,10 @@ export function specialById(id: SpecialId): SpecialDef | undefined {
   return SPECIALS.find((s) => s.id === id);
 }
 
+export function petById(id: PetId): PetDef | undefined {
+  return PETS.find((p) => p.id === id);
+}
+
 /** Missile cooldown after upgrades (min floor 500ms). */
 export function missileCooldownMs(level: number): number {
   const def = specialById('missile');
@@ -132,11 +152,11 @@ export function orbitCapacity(orbitLevel: number): number {
 }
 
 /**
- * True when every shop purchase is owned / maxed:
- * all skins, shapes, skills, specials, weapons, and special upgrades.
+ * True when every buyable shop item is owned / maxed:
+ * skins, shapes, skills, specials, and special upgrades.
+ * (Weapons are level pickups — not required for shop completion / shields.)
  */
 export function isShopFullyOwned(save: SaveData): boolean {
-  if (!SHOP_WEAPONS.every((w) => save.inventory.includes(w))) return false;
   if (!SKINS.every((s) => save.ownedSkins.includes(s.id))) return false;
   if (!SHAPES.every((s) => save.ownedShapes.includes(s.id))) return false;
   if (!SKILLS.every((s) => save.ownedSkills.includes(s.id))) return false;
@@ -147,7 +167,29 @@ export function isShopFullyOwned(save: SaveData): boolean {
   return true;
 }
 
-/** Orbit bullet-block + enemy-repulse shields (requires full shop completion). */
-export function orbitShieldsUnlocked(save: SaveData): boolean {
+/** Orbit bullet-block + enemy-repulse shields unlock after full shop (equip separately). */
+export function shieldsUnlocked(save: SaveData): boolean {
   return isShopFullyOwned(save);
+}
+
+/** @deprecated use shieldsUnlocked — kept for call-site clarity during migration. */
+export function orbitShieldsUnlocked(save: SaveData): boolean {
+  return shieldsUnlocked(save);
+}
+
+export const SHIELDS: { id: ShieldId }[] = [{ id: 'reflect' }, { id: 'repulse' }];
+
+export type PassiveDef = {
+  id: PassiveId;
+  price: number;
+};
+
+/** Premium passives — separate shop class from K skills. */
+export const PASSIVES: PassiveDef[] = [
+  { id: 'immortal', price: 100_000 },
+  { id: 'nuke', price: 100_000 },
+];
+
+export function passiveById(id: PassiveId): PassiveDef | undefined {
+  return PASSIVES.find((p) => p.id === id);
 }

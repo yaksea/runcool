@@ -18,6 +18,7 @@ export class Player {
   private coyoteUntil = 0;
   private jumpBufferUntil = 0;
   private invincibleUntil = 0;
+  private immortal = false;
   private attackCooldownUntil = 0;
   private lastAttackAt = -9999;
   private supportedUntil = 0;
@@ -97,10 +98,28 @@ export class Player {
   }
 
   isInvincible(now: number): boolean {
-    return now < this.invincibleUntil;
+    return this.immortal || now < this.invincibleUntil;
+  }
+
+  /** Permanent god-mode from shop passive — independent of timed i-frames. */
+  setImmortal(on: boolean): void {
+    this.immortal = on;
+    if (on) {
+      this.sprite.setAlpha(0.75);
+    } else if (this.sprite.scene.time.now >= this.invincibleUntil) {
+      this.sprite.setAlpha(1);
+    }
+  }
+
+  isImmortal(): boolean {
+    return this.immortal;
   }
 
   makeInvincible(now: number, ms: number = PHYSICS.invincibleMs): void {
+    if (this.immortal) {
+      this.sprite.setAlpha(0.75);
+      return;
+    }
     this.invincibleUntil = now + ms;
     this.sprite.setAlpha(0.55);
   }
@@ -108,6 +127,10 @@ export class Player {
   clearInvincibleVisual(): void {
     const now = this.sprite.scene.time.now;
     if (this.isFlying(now)) return;
+    if (this.immortal) {
+      this.sprite.setAlpha(0.75);
+      return;
+    }
     if (!this.isInvincible(now)) {
       this.sprite.setAlpha(1);
       this.sprite.setTint(this.skinTint);

@@ -112,7 +112,7 @@ class SoundSystemImpl {
   }
 
   /** Skill activate — sparkly arpeggio */
-  skill(kind: 'blink' | 'haste' | 'flight' | 'none' = 'none'): void {
+  skill(kind: 'blink' | 'haste' | 'flight' | 'nuke' | 'none' = 'none'): void {
     if (kind === 'blink') {
       this.playTones([
         { freq: 660, dur: 0.05, type: 'sine', vol: 0.24 },
@@ -134,6 +134,15 @@ class SoundSystemImpl {
       this.playTones([
         { freq: 400, dur: 0.12, type: 'sine', vol: 0.22, slideTo: 720 },
         { freq: 900, dur: 0.1, type: 'triangle', vol: 0.14, delay: 0.08 },
+      ]);
+      return;
+    }
+    if (kind === 'nuke') {
+      this.playTones([
+        { freq: 180, dur: 0.18, type: 'sawtooth', vol: 0.22, slideTo: 80 },
+        { freq: 90, dur: 0.28, type: 'square', vol: 0.2, delay: 0.12, slideTo: 40 },
+        { freq: 420, dur: 0.12, type: 'triangle', vol: 0.16, delay: 0.22 },
+        { freq: 220, dur: 0.2, type: 'sine', vol: 0.18, delay: 0.32, slideTo: 60 },
       ]);
       return;
     }

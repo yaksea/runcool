@@ -80,23 +80,20 @@ export const level8: LevelDef = {
     { id: 'p8c', x: 300, y: 520, pairId: 'p8d' },
     { id: 'p8d', x: 1600, y: 720, pairId: 'p8c' },
   ],
-  geysers: [
-    { x: 1100, y: 400, intervalMs: 1200, force: 820 },
-    { x: 2720, y: 520, intervalMs: 1400, force: 780 },
-    { x: 740, y: 740, intervalMs: 1300, force: 760 },
+        geysers: [
+    { x: 55, y: 240, intervalMs: 1200, force: 820 },
+    { x: 1567, y: 800, intervalMs: 1400, force: 780 },
   ],
-  flameVents: [
-    { x: 520, y: 240, intervalMs: 750, height: 130 },
-    { x: 1300, y: 360, intervalMs: 650, height: 150 },
-    { x: 2480, y: 600, intervalMs: 700, height: 140 },
-    { x: 2180, y: 680, intervalMs: 650, height: 155 },
+        flameVents: [
+    { x: 550, y: 240, intervalMs: 750, height: 130 },
+    { x: 847, y: 180, intervalMs: 650, height: 150 },
+    { x: 2713, y: 180, intervalMs: 700, height: 140 },
+    { x: 1813, y: 340, intervalMs: 650, height: 155 },
   ],
-  acidPools: [
-    { x: 780, y: 180, w: 86 },
-    { x: 1620, y: 400, w: 90 },
-    { x: 2360, y: 220, w: 80 },
-    { x: 1880, y: 760, w: 88 },
-    { x: 1000, y: 780, w: 84 },
+        acidPools: [
+    { x: 373, y: 280, w: 86 },
+    { x: 165, y: 240, w: 90 },
+    { x: 1010, y: 780, w: 80 },
   ],
   timedPlatforms: [
     { x: 1900, y: 240, w: 100, h: 20, onMs: 950, offMs: 650 },
@@ -107,13 +104,13 @@ export const level8: LevelDef = {
     { id: 'gate8a', x: 1360, y: 680, w: 26, h: 100 },
     { id: 'gate8b', x: 600, y: 620, w: 26, h: 90 },
   ],
-  levers: [
-    { x: 1340, y: 760, targetId: 'gate8a', targetType: 'gate' },
-    { x: 540, y: 680, targetId: 'gate8b', targetType: 'gate' },
-    { x: 1040, y: 440, targetId: 'cv8a', targetType: 'conveyor' },
-    { x: 2780, y: 560, targetId: 'cv8b', targetType: 'conveyor' },
-    { x: 2940, y: 260, targetId: 'fan8b', targetType: 'fan' },
-    { x: 1940, y: 700, targetId: 'fan8c', targetType: 'fan' },
+      levers: [
+    { x: 1260, y: 760, targetId: 'gate8a', targetType: 'gate' },
+    { x: 527, y: 680, targetId: 'gate8b', targetType: 'gate' },
+    { x: 1273, y: 360, targetId: 'cv8a', targetType: 'conveyor' },
+    { x: 2827, y: 520, targetId: 'cv8b', targetType: 'conveyor' },
+    { x: 2913, y: 240, targetId: 'fan8b', targetType: 'fan' },
+    { x: 1920, y: 760, targetId: 'fan8c', targetType: 'fan' },
   ],
   breakables: [
     { x: 440, y: 360, w: 48, h: 56, hits: 1 },
@@ -122,27 +119,23 @@ export const level8: LevelDef = {
     { x: 2200, y: 640, w: 50, h: 56, hits: 2 },
     { x: 1080, y: 720, w: 48, h: 54, hits: 2 },
   ],
-  crumbles: [
+    crumbles: [
     { x: 620, y: 220, w: 90, h: 22 },
     { x: 1400, y: 360, w: 90, h: 22 },
-    { x: 2480, y: 200, w: 90, h: 22 },
+    { x: 2420, y: 220, w: 90, h: 22 },
     { x: 2000, y: 740, w: 90, h: 22 },
   ],
-  bumpers: [
-    { x: 880, y: 350, dir: 1 },
-    { x: 2200, y: 270, dir: -1 },
-    { x: 2600, y: 510, dir: 1 },
-    { x: 600, y: 730, dir: -1 },
+        bumpers: [
+    { x: 1673, y: 120, dir: 1 },
   ],
-  spikes: [
-    { x: 640, y: 240, count: 3 },
-    { x: 1080, y: 140, count: 4 },
-    { x: 1480, y: 400, count: 3 },
-    { x: 2080, y: 280, count: 4 },
-    { x: 2840, y: 520, count: 3 },
-    { x: 1680, y: 760, count: 3 },
-    { x: 860, y: 740, count: 3 },
-    { x: 2480, y: 160, count: 3 },
+      spikes: [
+    { x: 773, y: 360, count: 3 },
+    { x: 1060, y: 140, count: 4 },
+    { x: 1330, y: 180, count: 3 },
+    { x: 2100, y: 280, count: 4 },
+    { x: 3053, y: 440, count: 3 },
+    { x: 1633, y: 800, count: 3 },
+    { x: 380, y: 560, count: 3 },
   ],
   pads: [
     { x: 1040, y: 116 },

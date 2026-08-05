@@ -60,6 +60,9 @@ export class Enemy {
   private repulseVy = 0;
   /** Brief grace after arena recall so shield doesn't bounce-loop. */
   private shieldImmuneUntil = 0;
+  /** Snowman pet freeze — AI halted until this time. */
+  private frozenUntil = 0;
+  private freezeTinted = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -223,6 +226,14 @@ export class Enemy {
     });
   }
 
+  /** Snowman aura: stop AI and tint icy blue. */
+  applyFreeze(durationMs: number): void {
+    if (this.dead || !this.sprite.active) return;
+    const now = this.sprite.scene.time.now;
+    this.frozenUntil = Math.max(this.frozenUntil, now + durationMs);
+    this.sprite.setTint(0x85c1e9);
+  }
+
   update(player?: Player): void {
     if (this.dead || !this.sprite.active) {
       this.hpBg.setVisible(false);
@@ -233,6 +244,22 @@ export class Enemy {
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     const now = this.sprite.scene.time.now;
     this.phase += 0.05;
+
+    if (now < this.frozenUntil) {
+      this.freezeTinted = true;
+      if (this.isFlyer()) {
+        this.placeFlying(this.sprite.x, this.sprite.y);
+      } else {
+        body.setVelocityX(0);
+      }
+      this.sprite.setTint(0xaed6f1);
+      this.syncHpBar();
+      return;
+    }
+    if (this.freezeTinted) {
+      this.freezeTinted = false;
+      this.sprite.clearTint();
+    }
 
     // Shield knockback overrides AI so the bounce isn't cancelled same-frame.
     if (now < this.repulseUntil) {
@@ -450,8 +477,22 @@ export class Enemy {
 
     this.hurtUntil = now + 280;
     this.stompImmuneUntil = now + 700;
+    return this.applyHitDamage(1, knockDir);
+  }
 
-    this.hitsLeft = Math.max(0, this.hitsLeft - 1);
+  /**
+   * Multi-hit damage (pet wave). No weapon i-frames — caller dedupes per projectile.
+   * Returns true if the enemy died.
+   */
+  takeHits(amount: number, knockDir: number): boolean {
+    if (this.dead || !this.sprite.active) return false;
+    const dmg = Math.max(1, Math.floor(amount));
+    this.stompImmuneUntil = Math.max(this.stompImmuneUntil, this.sprite.scene.time.now + 700);
+    return this.applyHitDamage(dmg, knockDir);
+  }
+
+  private applyHitDamage(amount: number, knockDir: number): boolean {
+    this.hitsLeft = Math.max(0, this.hitsLeft - amount);
     this.refreshHpBar();
     this.syncHpBar();
     this.spawnDamageFloat();

@@ -50,31 +50,31 @@ export const level3: LevelDef = {
     { x: 1540, y: 200, w: 150, h: 24, dir: -1, speed: 150 },
   ],
   fans: [{ x: 2360, y: 220, w: 64, h: 160, force: 18 }],
-  crumbles: [
+    crumbles: [
     { x: 860, y: 500, w: 90, h: 22 },
     { x: 1700, y: 140, w: 90, h: 22 },
   ],
-  bumpers: [
-    { x: 1600, y: 430, dir: 1 },
-    { x: 1100, y: 150, dir: -1 },
+      bumpers: [
+    { x: 2273, y: 400, dir: 1 },
+    { x: 807, y: 480, dir: -1 },
   ],
-  spikes: [
-    { x: 520, y: 520, count: 4 },
-    { x: 620, y: 520, count: 3 },
-    { x: 1760, y: 400, count: 4 },
-    { x: 2260, y: 160, count: 4 },
-    { x: 680, y: 140, count: 3 },
-    { x: 1260, y: 480, count: 3 },
+      spikes: [
+    { x: 530, y: 520, count: 4 },
+    { x: 373, y: 560, count: 3 },
+    { x: 1733, y: 400, count: 4 },
+    { x: 2233, y: 160, count: 4 },
+    { x: 687, y: 140, count: 3 },
+    { x: 1267, y: 480, count: 3 },
   ],
-  flameVents: [
-    { x: 800, y: 480, intervalMs: 700, height: 145 },
-    { x: 2040, y: 360, intervalMs: 650, height: 140 },
-    { x: 1300, y: 140, intervalMs: 750, height: 130 },
+      flameVents: [
+    { x: 950, y: 160, intervalMs: 700, height: 145 },
+    { x: 2060, y: 360, intervalMs: 650, height: 140 },
+    { x: 1273, y: 140, intervalMs: 750, height: 130 },
   ],
-  acidPools: [
-    { x: 1000, y: 520, w: 88 },
-    { x: 2500, y: 360, w: 84 },
-    { x: 960, y: 160, w: 80 },
+      acidPools: [
+    { x: 1460, y: 440, w: 88 },
+    { x: 2547, y: 360, w: 84 },
+    { x: 400, y: 120, w: 80 },
   ],
   pads: [
     { x: 1480, y: 416 },
@@ -87,6 +87,8 @@ export const level3: LevelDef = {
     { type: 'floater', x: 2600, y: 100, patrol: 70 },
     { type: 'slime', x: 1000, y: 120, patrol: 50 },
     { type: 'hopper', x: 400, y: 80, patrol: 40 },
+    { type: 'slime', x: 760, y: 400, patrol: 40 },
+    { type: 'bat', x: 2300, y: 280, patrol: 65 },
   ],
   weapons: [
     { type: 'peashooter', x: 1720, y: 360 },

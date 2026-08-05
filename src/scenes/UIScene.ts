@@ -1,14 +1,22 @@
 import Phaser from 'phaser';
-import { ZH, weaponLabel } from '../i18n/zh';
+import { ZH, petLabel, weaponLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { SaveSystem, type InventoryWeapon, type WeaponType } from '../systems/SaveSystem';
 import { AdPromoOverlay } from '../ui/AdPromoOverlay';
+import type { PetBehavior } from '../entities/PetCompanion';
+import type { PetId } from '../systems/SaveSystem';
 import type { GameScene } from './GameScene';
 
 type InventoryPayload = {
   open: boolean;
   inventory?: InventoryWeapon[];
   equipped?: WeaponType;
+};
+
+type PetMenuPayload = {
+  open: boolean;
+  petId?: PetId;
+  behavior?: PetBehavior;
 };
 
 export class UIScene extends Phaser.Scene {
@@ -29,6 +37,7 @@ export class UIScene extends Phaser.Scene {
   private isTutorialLevel = false;
   private pauseLayer?: Phaser.GameObjects.Container;
   private bagLayer?: Phaser.GameObjects.Container;
+  private petMenuLayer?: Phaser.GameObjects.Container;
   private winLayer?: Phaser.GameObjects.Container;
   private adOverlay?: AdPromoOverlay;
   private adHudBtn?: Phaser.GameObjects.Container;
@@ -41,34 +50,34 @@ export class UIScene extends Phaser.Scene {
     this.isTutorialLevel = data.isTutorial === true;
     const style = {
       fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '18px',
+      fontSize: '11px',
       color: THEME.uiText,
       backgroundColor: '#ffffffcc',
-      padding: { x: 10, y: 6 },
+      padding: { x: 5, y: 2 },
     };
 
     const levelName =
       this.isTutorialLevel || data.levelIndex === 0 ? ZH.tutorialLevel : ZH.level(data.levelIndex);
-    this.add.text(16, 12, levelName, style).setScrollFactor(0).setDepth(100);
+    this.add.text(12, 8, levelName, style).setScrollFactor(0).setDepth(100);
 
-    this.timeText = this.add.text(16, 48, `${ZH.time}: 0.0s`, style).setScrollFactor(0).setDepth(100);
-    this.deathText = this.add.text(16, 84, `${ZH.deaths}: 0`, style).setScrollFactor(0).setDepth(100);
-    this.coinText = this.add.text(16, 120, `${ZH.coins}: 0`, style).setScrollFactor(0).setDepth(100);
+    this.timeText = this.add.text(12, 28, '0.0s', style).setScrollFactor(0).setDepth(100);
+    this.deathText = this.add.text(12, 48, `亡 0`, style).setScrollFactor(0).setDepth(100);
+    this.coinText = this.add.text(12, 68, `币 0`, style).setScrollFactor(0).setDepth(100);
     this.buildVitalsBar();
     this.weaponText = this.add
-      .text(16, 192, `${ZH.weapon}: ${ZH.weaponNone}`, style)
+      .text(12, 112, `武 ${ZH.weaponNone}`, style)
       .setScrollFactor(0)
       .setDepth(100);
     this.skillText = this.add
-      .text(16, 228, `${ZH.skill}: ${ZH.skillNone}`, style)
+      .text(12, 132, `技 ${ZH.skillNone}`, style)
       .setScrollFactor(0)
       .setDepth(100);
     this.specialText = this.add
-      .text(16, 264, `${ZH.special}: ${ZH.specialNone}`, style)
+      .text(12, 152, `特 ${ZH.specialNone}`, style)
       .setScrollFactor(0)
       .setDepth(100);
     this.add
-      .text(16, 300, `${ZH.bag}: B · K · M · N`, style)
+      .text(12, 172, 'B·K·M·N', style)
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -119,16 +128,16 @@ export class UIScene extends Phaser.Scene {
         specialLabel: string;
         specialCdMs: number;
       }) => {
-        this.timeText.setText(`${ZH.time}: ${(payload.timeMs / 1000).toFixed(1)}s`);
-        this.deathText.setText(`${ZH.deaths}: ${payload.deaths}`);
-        this.coinText.setText(`${ZH.coins}: ${payload.coins}`);
+        this.timeText.setText(`${(payload.timeMs / 1000).toFixed(1)}s`);
+        this.deathText.setText(`亡 ${payload.deaths}`);
+        this.coinText.setText(`币 ${payload.coins}`);
         this.refreshVitals(payload.hp, payload.maxHp, payload.armor, payload.maxArmor);
-        this.weaponText.setText(`${ZH.weapon}: ${payload.weaponLabel}`);
-        const cd = payload.skillCdMs > 0 ? ` (${(payload.skillCdMs / 1000).toFixed(1)}s)` : '';
-        this.skillText.setText(`${ZH.skill}: ${payload.skillLabel}${cd}`);
+        this.weaponText.setText(`武 ${payload.weaponLabel}`);
+        const cd = payload.skillCdMs > 0 ? ` ${(payload.skillCdMs / 1000).toFixed(1)}s` : '';
+        this.skillText.setText(`技 ${payload.skillLabel}${cd}`);
         const scd =
-          payload.specialCdMs > 0 ? ` (${(payload.specialCdMs / 1000).toFixed(1)}s)` : '';
-        this.specialText.setText(`${ZH.special}: ${payload.specialLabel}${scd}`);
+          payload.specialCdMs > 0 ? ` ${(payload.specialCdMs / 1000).toFixed(1)}s` : '';
+        this.specialText.setText(`特 ${payload.specialLabel}${scd}`);
       },
     );
     game.events.on('toast', (msg: string) => this.showToast(msg));
@@ -154,6 +163,10 @@ export class UIScene extends Phaser.Scene {
       if (payload.open) this.showBag(payload);
       else this.hideBag();
     });
+    game.events.on('petMenu', (payload: PetMenuPayload) => {
+      if (payload.open) this.showPetMenu(payload);
+      else this.hidePetMenu();
+    });
     game.events.on('win', (payload: {
       timeMs: number;
       deaths: number;
@@ -172,6 +185,7 @@ export class UIScene extends Phaser.Scene {
       game.events.off('tutorialAssistState');
       game.events.off('pause');
       game.events.off('inventory');
+      game.events.off('petMenu');
       game.events.off('win');
       game.events.off('adSkip');
       this.adOverlay?.destroy();
@@ -239,39 +253,39 @@ export class UIScene extends Phaser.Scene {
   }
 
   private buildVitalsBar(): void {
-    const bg = this.add.rectangle(0, 0, 268, 34, 0xffffff, 0.8).setOrigin(0, 0.5);
+    const bg = this.add.rectangle(0, 0, 200, 20, 0xffffff, 0.8).setOrigin(0, 0.5);
     const labelStyle = {
       fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '18px',
+      fontSize: '11px',
       color: THEME.uiText,
     };
 
     const rowY = 0;
-    const hpLabel = this.add.text(8, rowY, `${ZH.hp}`, labelStyle).setOrigin(0, 0.5);
+    const hpLabel = this.add.text(6, rowY, '命', labelStyle).setOrigin(0, 0.5);
     this.hpPips = [];
-    const hx = 8 + hpLabel.width + 16;
+    const hx = 6 + hpLabel.width + 8;
     for (let i = 0; i < 3; i++) {
-      const pip = this.add.image(hx + i * 22, rowY, 'hud_hp_on').setOrigin(0.5).setDisplaySize(18, 18);
+      const pip = this.add.image(hx + i * 14, rowY, 'hud_hp_on').setOrigin(0.5).setDisplaySize(12, 12);
       this.hpPips.push(pip);
     }
 
     const armorLabel = this.add
-      .text(hx + 3 * 22 + 14, rowY, `${ZH.armor}`, labelStyle)
+      .text(hx + 3 * 14 + 8, rowY, '甲', labelStyle)
       .setOrigin(0, 0.5);
     this.armorPips = [];
-    const ax = armorLabel.x + armorLabel.width + 16;
+    const ax = armorLabel.x + armorLabel.width + 8;
     for (let i = 0; i < 3; i++) {
       const pip = this.add
-        .image(ax + i * 22, rowY, 'hud_armor_on')
+        .image(ax + i * 14, rowY, 'hud_armor_on')
         .setOrigin(0.5)
-        .setDisplaySize(18, 18);
+        .setDisplaySize(12, 12);
       this.armorPips.push(pip);
     }
 
-    bg.width = ax + 3 * 22 + 12;
+    bg.width = ax + 3 * 14 + 8;
 
     this.vitalsRoot = this.add
-      .container(16, 172, [bg, hpLabel, ...this.hpPips, armorLabel, ...this.armorPips])
+      .container(12, 92, [bg, hpLabel, ...this.hpPips, armorLabel, ...this.armorPips])
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -553,6 +567,84 @@ export class UIScene extends Phaser.Scene {
     this.bagLayer = undefined;
   }
 
+  private showPetMenu(payload: PetMenuPayload): void {
+    this.hidePetMenu();
+    const game = this.scene.get('GameScene') as GameScene;
+    const cx = THEME.width / 2;
+    const cy = THEME.height / 2;
+    const petName = petLabel(payload.petId ?? 'none');
+    const current = payload.behavior ?? 'attack';
+
+    const c = this.add.container(0, 0).setDepth(215).setScrollFactor(0);
+    const dim = this.add
+      .rectangle(cx, cy, THEME.width, THEME.height, 0x000000, 0.45)
+      .setInteractive();
+    dim.on('pointerdown', () => game.closePetMenu());
+    c.add(dim);
+    c.add(
+      this.add
+        .rectangle(cx, cy, 360, 300, 0xffffff, 0.97)
+        .setStrokeStyle(3, THEME.button),
+    );
+    c.add(
+      this.add
+        .text(cx, cy - 118, ZH.petMenuTitle, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '26px',
+          color: '#1f2d3d',
+          fontStyle: 'bold',
+        })
+        .setOrigin(0.5),
+    );
+    c.add(
+      this.add
+        .text(cx, cy - 88, `${petName} · ${ZH.petMenuHint}`, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '13px',
+          color: '#667788',
+        })
+        .setOrigin(0.5),
+    );
+
+    const modes: { id: PetBehavior; label: string }[] = [
+      { id: 'play', label: ZH.petModePlay },
+      { id: 'attack', label: ZH.petModeAttack },
+      { id: 'quiet', label: ZH.petModeQuiet },
+    ];
+    modes.forEach((mode, i) => {
+      const y = cy - 36 + i * 52;
+      const active = current === mode.id;
+      const bg = this.add
+        .rectangle(cx, y, 260, 42, active ? THEME.button : 0xf4f7fa)
+        .setStrokeStyle(2, active ? THEME.playerStroke : 0xcbd5e1)
+        .setInteractive({ useHandCursor: true });
+      const text = this.add
+        .text(cx, y, active ? `${mode.label} · ${ZH.equipped}` : mode.label, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: active ? '#ffffff' : '#1f2d3d',
+          fontStyle: active ? 'bold' : 'normal',
+        })
+        .setOrigin(0.5);
+      bg.on('pointerover', () => {
+        if (!active) bg.setFillStyle(0xe8f4ff);
+      });
+      bg.on('pointerout', () => {
+        if (!active) bg.setFillStyle(0xf4f7fa);
+      });
+      bg.on('pointerdown', () => game.setPetBehavior(mode.id));
+      c.add([bg, text]);
+    });
+
+    this.makeBtn(c, cx, cy + 118, ZH.back, () => game.closePetMenu());
+    this.petMenuLayer = c;
+  }
+
+  private hidePetMenu(): void {
+    this.petMenuLayer?.destroy(true);
+    this.petMenuLayer = undefined;
+  }
+
   private showWin(payload: {
     timeMs: number;
     deaths: number;
@@ -562,6 +654,7 @@ export class UIScene extends Phaser.Scene {
   }): void {
     if (this.winLayer) return;
     this.hideBag();
+    this.hidePetMenu();
     this.adHudBtn?.setVisible(false);
     const game = this.scene.get('GameScene') as GameScene;
     const c = this.add.container(0, 0).setDepth(220).setScrollFactor(0);

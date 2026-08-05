@@ -42,46 +42,44 @@ export const level9: LevelDef = {
   seesaws: [{ x: 1520, y: 400, w: 180 }],
   conveyors: [{ id: 'cv9', x: 920, y: 500, w: 160, h: 28, dir: 1, speed: 140 }],
   fans: [{ id: 'fan9', x: 1760, y: 220, w: 60, h: 140, force: 18 }],
-  crumbles: [
+    crumbles: [
     { x: 640, y: 460, w: 80, h: 20 },
     { x: 2460, y: 300, w: 80, h: 20 },
   ],
-  bumpers: [
-    { x: 1320, y: 400, dir: 1 },
-    { x: 2700, y: 250, dir: -1 },
+      bumpers: [
+    { x: 1650, y: 620, dir: 1 },
+    { x: 2887, y: 220, dir: -1 },
   ],
   timedPlatforms: [{ x: 2280, y: 300, w: 90, h: 20, onMs: 1300, offMs: 800 }],
-  geysers: [{ x: 680, y: 520, intervalMs: 1800, force: 680 }],
+    
   gates: [{ id: 'gate9', x: 3000, y: 200, w: 26, h: 80 }],
-  levers: [
-    { x: 2960, y: 220, targetId: 'gate9', targetType: 'gate' },
-    { x: 1080, y: 460, targetId: 'cv9', targetType: 'conveyor' },
-    { x: 1900, y: 300, targetId: 'fan9', targetType: 'fan' },
+      levers: [
+    { x: 2953, y: 220, targetId: 'gate9', targetType: 'gate' },
+    { x: 1087, y: 620, targetId: 'cv9', targetType: 'conveyor' },
+    { x: 1740, y: 420, targetId: 'fan9', targetType: 'fan' },
   ],
   breakables: [{ x: 2140, y: 240, w: 48, h: 48, hits: 2 }],
   portals: [
     { id: 'p9a', x: 1360, y: 620, pairId: 'p9b' },
     { id: 'p9b', x: 2400, y: 300, pairId: 'p9a' },
   ],
-  spikes: [
-    { x: 620, y: 440, count: 4 },
-    { x: 1460, y: 360, count: 4 },
-    { x: 1680, y: 620, count: 4 },
-    { x: 2840, y: 220, count: 3 },
-    { x: 1120, y: 500, count: 3 },
-    { x: 2000, y: 340, count: 3 },
+      spikes: [
+    { x: 800, y: 440, count: 4 },
+    { x: 1273, y: 420, count: 4 },
+    { x: 1700, y: 620, count: 4 },
+    { x: 2673, y: 260, count: 3 },
+    { x: 543, y: 480, count: 3 },
+    { x: 1973, y: 340, count: 3 },
   ],
-  flameVents: [
-    { x: 560, y: 480, intervalMs: 750, height: 130 },
-    { x: 1040, y: 500, intervalMs: 700, height: 145 },
-    { x: 1700, y: 420, intervalMs: 650, height: 150 },
-    { x: 2620, y: 260, intervalMs: 650, height: 140 },
+      flameVents: [
+    { x: 393, y: 520, intervalMs: 750, height: 130 },
+    { x: 195, y: 560, intervalMs: 700, height: 145 },
+    { x: 3116, y: 280, intervalMs: 650, height: 150 },
+    { x: 2293, y: 480, intervalMs: 650, height: 140 },
   ],
-  acidPools: [
-    { x: 760, y: 440, w: 84 },
-    { x: 1900, y: 340, w: 88 },
-    { x: 2400, y: 340, w: 80 },
-    { x: 1240, y: 500, w: 86 },
+      acidPools: [
+    { x: 65, y: 560, w: 84 },
+    { x: 3228, y: 280, w: 88 },
   ],
   pads: [
     { x: 420, y: 440 },
@@ -97,6 +95,8 @@ export const level9: LevelDef = {
     { type: 'spitter', x: 2160, y: 240, patrol: 30 },
     { type: 'ghost', x: 2600, y: 180, patrol: 55 },
     { type: 'tank', x: 2950, y: 180, patrol: 35 },
+    { type: 'slime', x: 800, y: 600, patrol: 40 },
+    { type: 'floater', x: 1900, y: 200, patrol: 60 },
   ],
   weapons: [
     { type: 'peashooter', x: 540, y: 440 },

@@ -39,7 +39,7 @@ export const level4: LevelDef = {
     { id: 'cv4a', x: 420, y: 840, w: 140, h: 26, dir: -1, speed: 150 },
   ],
   fans: [{ id: 'fan4', x: 300, y: 340, w: 60, h: 140, force: 20 }],
-  crumbles: [
+    crumbles: [
     { x: 260, y: 640, w: 90, h: 20 },
     { x: 280, y: 400, w: 90, h: 20 },
   ],
@@ -48,39 +48,37 @@ export const level4: LevelDef = {
     { x: 300, y: 240, w: 90, h: 20, onMs: 1200, offMs: 700 },
   ],
   gates: [{ id: 'gate4a', x: 400, y: 100, w: 26, h: 80 }],
-  levers: [
-    { x: 450, y: 140, targetId: 'gate4a', targetType: 'gate' },
-    { x: 435, y: 800, targetId: 'cv4a', targetType: 'conveyor' },
-    { x: 500, y: 320, targetId: 'fan4', targetType: 'fan' },
+      levers: [
+    { x: 336, y: 140, targetId: 'gate4a', targetType: 'gate' },
+    { x: 527, y: 800, targetId: 'cv4a', targetType: 'conveyor' },
+    { x: 220, y: 500, targetId: 'fan4', targetType: 'fan' },
   ],
   breakables: [
     { x: 180, y: 580, w: 44, h: 50, hits: 1 },
     { x: 460, y: 280, w: 48, h: 52, hits: 2 },
   ],
-  geysers: [{ x: 200, y: 860, intervalMs: 1600, force: 720 }],
-  flameVents: [
-    { x: 480, y: 560, intervalMs: 700, height: 140 },
-    { x: 200, y: 500, intervalMs: 650, height: 135 },
-    { x: 480, y: 200, intervalMs: 750, height: 130 },
+        geysers: [
+    { x: 304, y: 860, intervalMs: 1600, force: 720 },
   ],
-  acidPools: [
-    { x: 200, y: 740, w: 84 },
-    { x: 550, y: 440, w: 88 },
-    { x: 220, y: 260, w: 80 },
+        flameVents: [
+    { x: 520, y: 200, intervalMs: 700, height: 140 },
   ],
-  spikes: [
-    { x: 500, y: 800, count: 3 },
-    { x: 160, y: 620, count: 4 },
-    { x: 420, y: 440, count: 3 },
-    { x: 180, y: 380, count: 3 },
+        acidPools: [
+    { x: 192, y: 860, w: 84 },
+    { x: 527, y: 560, w: 88 },
+  ],
+      spikes: [
+    { x: 507, y: 680, count: 3 },
+    { x: 170, y: 740, count: 4 },
+    { x: 520, y: 440, count: 3 },
+    { x: 187, y: 380, count: 3 },
   ],
   pads: [
     { x: 480, y: 656 },
     { x: 200, y: 356 },
   ],
-  bumpers: [
-    { x: 500, y: 670, dir: 1 },
-    { x: 440, y: 260, dir: -1 },
+        bumpers: [
+    { x: 453, y: 680, dir: 1 },
   ],
   enemies: [
     { type: 'slime', x: 480, y: 760, patrol: 40 },

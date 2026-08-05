@@ -1,3 +1,6 @@
+import { isShopFullyOwned } from '../game/shopCatalog';
+import { LEVELS } from '../levels';
+
 export type WeaponType = 'none' | 'glove' | 'peashooter' | 'hammer' | 'fireball' | 'shotgun';
 export type InventoryWeapon = Exclude<WeaponType, 'none'>;
 /** Color tint id (shop “颜色”). */
@@ -8,6 +11,14 @@ export type SkillId = 'blink' | 'haste' | 'flight';
 export type EquippedSkill = SkillId | 'none';
 /** Independent from K-skills; missile=M, orbit=N; both can be equipped. */
 export type SpecialId = 'missile' | 'orbit';
+/** Shop pets — one companion at a time. */
+export type PetId = 'kitten' | 'snowman' | 'fish';
+export type EquippedPet = PetId | 'none';
+/** Passive shields — equip independently of orbit missiles. */
+export type ShieldId = 'reflect' | 'repulse';
+/** Premium passives (separate shop class). */
+export type PassiveId = 'immortal' | 'nuke';
+export type EquippedPassive = PassiveId | 'none';
 
 export type SaveData = {
   version: 1;
@@ -24,6 +35,17 @@ export type SaveData = {
   ownedSpecials: SpecialId[];
   /** Missile and orbit can both be equipped at once. */
   equippedSpecials: SpecialId[];
+  ownedPets: PetId[];
+  equippedPet: EquippedPet;
+  /**
+   * Reflect / repulse shields. Unlock after full shop; each can be
+   * equipped or unequipped without orbit missiles.
+   */
+  equippedShields: ShieldId[];
+  /** True after the player manually equips/unequips a shield. */
+  shieldsConfigured: boolean;
+  ownedPassives: PassiveId[];
+  equippedPassive: EquippedPassive;
   /** Missile cooldown upgrade level 0–8 (each level −0.5s cooldown). */
   missileLevel: number;
   /** Missile salvo upgrade level 0–8 (each level +0.5 missiles/shot, floored). */
@@ -54,11 +76,23 @@ const ALL_SKINS: SkinId[] = ['default', 'sky', 'mint', 'grape', 'sun'];
 const ALL_SHAPES: ShapeId[] = ['square', 'round', 'diamond', 'triangle', 'pill', 'hex'];
 const ALL_SKILLS: SkillId[] = ['blink', 'haste', 'flight'];
 const ALL_SPECIALS: SpecialId[] = ['missile', 'orbit'];
+const ALL_PETS: PetId[] = ['kitten', 'snowman', 'fish'];
+const ALL_SHIELDS: ShieldId[] = ['reflect', 'repulse'];
+const ALL_PASSIVES: PassiveId[] = ['immortal', 'nuke'];
+const MAX_LEVEL_INDEX = Math.max(...LEVELS.map((l) => l.index));
+
+function fullStarsLevels(): SaveData['levels'] {
+  const out: SaveData['levels'] = {};
+  for (const level of LEVELS) {
+    out[level.id] = { bestStars: 3, bestTimeMs: level.threeStarMs };
+  }
+  return out;
+}
 
 function defaultSave(): SaveData {
   return {
     version: 1,
-    unlockedMax: 0,
+    unlockedMax: MAX_LEVEL_INDEX,
     coins: 0,
     inventory: [],
     equipped: 'none',
@@ -70,11 +104,17 @@ function defaultSave(): SaveData {
     equippedSkill: 'none',
     ownedSpecials: [],
     equippedSpecials: [],
+    ownedPets: [],
+    equippedPet: 'none',
+    equippedShields: [],
+    shieldsConfigured: false,
+    ownedPassives: [],
+    equippedPassive: 'none',
     missileLevel: 0,
     missileSalvoLevel: 0,
     orbitLevel: 0,
     tutorialAssist: true,
-    levels: {},
+    levels: fullStarsLevels(),
     activeRun: null,
   };
 }
@@ -196,6 +236,51 @@ function normalizeEquippedSpecials(
   return out;
 }
 
+function normalizePets(list: unknown): PetId[] {
+  if (!Array.isArray(list)) return [];
+  const out: PetId[] = [];
+  for (const item of list) {
+    if (ALL_PETS.includes(item as PetId) && !out.includes(item as PetId)) {
+      out.push(item as PetId);
+    }
+  }
+  return out;
+}
+
+function normalizeEquippedPet(v: unknown, owned: PetId[]): EquippedPet {
+  if (v === 'none' || v == null) return 'none';
+  if (ALL_PETS.includes(v as PetId) && owned.includes(v as PetId)) return v as PetId;
+  return 'none';
+}
+
+function normalizeEquippedShields(list: unknown): ShieldId[] {
+  if (!Array.isArray(list)) return [];
+  const out: ShieldId[] = [];
+  for (const item of list) {
+    if (ALL_SHIELDS.includes(item as ShieldId) && !out.includes(item as ShieldId)) {
+      out.push(item as ShieldId);
+    }
+  }
+  return out;
+}
+
+function normalizePassives(list: unknown): PassiveId[] {
+  if (!Array.isArray(list)) return [];
+  const out: PassiveId[] = [];
+  for (const item of list) {
+    if (ALL_PASSIVES.includes(item as PassiveId) && !out.includes(item as PassiveId)) {
+      out.push(item as PassiveId);
+    }
+  }
+  return out;
+}
+
+function normalizeEquippedPassive(v: unknown, owned: PassiveId[]): EquippedPassive {
+  if (v === 'none' || v == null) return 'none';
+  if (ALL_PASSIVES.includes(v as PassiveId) && owned.includes(v as PassiveId)) return v as PassiveId;
+  return 'none';
+}
+
 export const SaveSystem = {
   load(): SaveData {
     try {
@@ -207,6 +292,9 @@ export const SaveSystem = {
       const ownedShapes = normalizeShapes(data.ownedShapes);
       const ownedSkills = normalizeSkills(data.ownedSkills);
       const ownedSpecials = normalizeSpecials(data.ownedSpecials);
+      const ownedPets = normalizePets(data.ownedPets);
+      const ownedPassives = normalizePassives(data.ownedPassives);
+      const shieldsConfigured = data.shieldsConfigured === true;
       const legacy = data as SaveData & { equippedSpecial?: unknown };
       const merged: SaveData = {
         ...defaultSave(),
@@ -227,6 +315,12 @@ export const SaveSystem = {
           ownedSpecials,
           legacy.equippedSpecial,
         ),
+        ownedPets,
+        equippedPet: normalizeEquippedPet(data.equippedPet, ownedPets),
+        equippedShields: normalizeEquippedShields(data.equippedShields),
+        shieldsConfigured,
+        ownedPassives,
+        equippedPassive: normalizeEquippedPassive(data.equippedPassive, ownedPassives),
         missileLevel: ownedSpecials.includes('missile')
           ? normalizeMissileLevel(data.missileLevel)
           : 0,
@@ -238,6 +332,28 @@ export const SaveSystem = {
           : 0,
         tutorialAssist: data.tutorialAssist !== false,
       };
+      if (isShopFullyOwned(merged)) {
+        if (!shieldsConfigured) {
+          // Default both on until the player changes them in the shop.
+          merged.equippedShields = ['reflect', 'repulse'];
+        }
+      } else {
+        merged.equippedShields = [];
+        merged.shieldsConfigured = false;
+      }
+
+      // All levels unlocked with full stars (new + existing saves).
+      merged.unlockedMax = Math.max(merged.unlockedMax, MAX_LEVEL_INDEX);
+      const stars = { ...merged.levels };
+      for (const level of LEVELS) {
+        const prev = stars[level.id] ?? { bestStars: 0, bestTimeMs: null };
+        stars[level.id] = {
+          bestStars: Math.max(prev.bestStars, 3),
+          bestTimeMs: prev.bestTimeMs ?? level.threeStarMs,
+        };
+      }
+      merged.levels = stars;
+
       if (merged.activeRun) {
         merged.activeRun.weapon = normalizeWeapon(merged.activeRun.weapon);
       }
@@ -384,6 +500,74 @@ export const SaveSystem = {
 
   isSpecialEquipped(id: SpecialId): boolean {
     return this.load().equippedSpecials.includes(id);
+  },
+
+  buyPet(id: PetId, price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (data.ownedPets.includes(id)) {
+      data.equippedPet = id;
+      this.save(data);
+      return { ok: true, data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.ownedPets.push(id);
+    data.equippedPet = id;
+    this.save(data);
+    return { ok: true, data };
+  },
+
+  equipPet(id: EquippedPet): SaveData {
+    const data = this.load();
+    if (id !== 'none' && !data.ownedPets.includes(id)) return data;
+    data.equippedPet = id;
+    this.save(data);
+    return data;
+  },
+
+  equipShield(id: ShieldId): SaveData {
+    const data = this.load();
+    if (!isShopFullyOwned(data)) return data;
+    if (!data.equippedShields.includes(id)) data.equippedShields.push(id);
+    data.shieldsConfigured = true;
+    this.save(data);
+    return data;
+  },
+
+  unequipShield(id: ShieldId): SaveData {
+    const data = this.load();
+    data.equippedShields = data.equippedShields.filter((s) => s !== id);
+    data.shieldsConfigured = true;
+    this.save(data);
+    return data;
+  },
+
+  isShieldEquipped(id: ShieldId): boolean {
+    const data = this.load();
+    return isShopFullyOwned(data) && data.equippedShields.includes(id);
+  },
+
+  buyPassive(id: PassiveId, price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (data.ownedPassives.includes(id)) {
+      data.equippedPassive = id;
+      this.save(data);
+      return { ok: true, data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.ownedPassives.push(id);
+    data.equippedPassive = id;
+    this.save(data);
+    return { ok: true, data };
+  },
+
+  equipPassive(id: EquippedPassive): SaveData {
+    const data = this.load();
+    if (id !== 'none' && !data.ownedPassives.includes(id)) return data;
+    data.equippedPassive = id;
+    this.save(data);
+    return data;
   },
 
   setTutorialAssist(enabled: boolean): SaveData {

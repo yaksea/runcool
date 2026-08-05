@@ -43,7 +43,7 @@ export const level10: LevelDef = {
     { id: 'cv10', x: 480, y: 840, w: 150, h: 26, dir: -1, speed: 130 },
   ],
   fans: [{ id: 'fan10', x: 360, y: 380, w: 56, h: 130, force: 20 }],
-  crumbles: [
+    crumbles: [
     { x: 300, y: 700, w: 80, h: 18 },
     { x: 320, y: 460, w: 80, h: 18 },
   ],
@@ -51,32 +51,20 @@ export const level10: LevelDef = {
     { x: 340, y: 620, w: 90, h: 18, onMs: 1200, offMs: 700 },
     { x: 340, y: 340, w: 90, h: 18, onMs: 1100, offMs: 650 },
   ],
-  geysers: [
-    { x: 320, y: 900, intervalMs: 1700, force: 700 },
-    { x: 420, y: 600, intervalMs: 1900, force: 650 },
+  
+        flameVents: [
+    { x: 208, y: 900, intervalMs: 700, height: 130 },
   ],
-  flameVents: [
-    { x: 140, y: 900, intervalMs: 700, height: 150 },
-    { x: 560, y: 720, intervalMs: 650, height: 140 },
-    { x: 200, y: 780, intervalMs: 750, height: 135 },
-    { x: 180, y: 420, intervalMs: 700, height: 130 },
-  ],
-  acidPools: [
-    { x: 220, y: 900, w: 86 },
-    { x: 600, y: 480, w: 80 },
-    { x: 260, y: 660, w: 84 },
-    { x: 220, y: 180, w: 80 },
+        acidPools: [
+    { x: 540, y: 360, w: 86 },
   ],
   seesaws: [{ x: 360, y: 560, w: 160 }],
-  bumpers: [
-    { x: 400, y: 690, dir: 1 },
-    { x: 400, y: 330, dir: -1 },
-  ],
+  
   gates: [{ id: 'gate10', x: 460, y: 80, w: 26, h: 70 }],
-  levers: [
-    { x: 480, y: 120, targetId: 'gate10', targetType: 'gate' },
-    { x: 620, y: 800, targetId: 'cv10', targetType: 'conveyor' },
-    { x: 240, y: 420, targetId: 'fan10', targetType: 'fan' },
+      levers: [
+    { x: 307, y: 180, targetId: 'gate10', targetType: 'gate' },
+    { x: 613, y: 720, targetId: 'cv10', targetType: 'conveyor' },
+    { x: 227, y: 540, targetId: 'fan10', targetType: 'fan' },
   ],
   breakables: [
     { x: 200, y: 620, w: 44, h: 48, hits: 1 },
@@ -86,11 +74,11 @@ export const level10: LevelDef = {
     { id: 'p10a', x: 780, y: 600, pairId: 'p10b' },
     { id: 'p10b', x: 760, y: 360, pairId: 'p10a' },
   ],
-  spikes: [
-    { x: 580, y: 840, count: 3 },
-    { x: 160, y: 660, count: 3 },
-    { x: 260, y: 300, count: 3 },
-    { x: 400, y: 900, count: 3 },
+      spikes: [
+    { x: 557, y: 480, count: 3 },
+    { x: 190, y: 420, count: 3 },
+    { x: 548, y: 120, count: 3 },
+    { x: 336, y: 900, count: 3 },
   ],
   pads: [
     { x: 600, y: 680 },
@@ -106,6 +94,8 @@ export const level10: LevelDef = {
     { type: 'spitter', x: 220, y: 380, patrol: 28 },
     { type: 'ghost', x: 560, y: 200, patrol: 45 },
     { type: 'chaser', x: 260, y: 140, patrol: 40 },
+    { type: 'slime', x: 760, y: 640, patrol: 40 },
+    { type: 'hopper', x: 400, y: 300, patrol: 35 },
   ],
   weapons: [
     { type: 'glove', x: 200, y: 740 },

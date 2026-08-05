@@ -55,7 +55,7 @@ export const level12: LevelDef = {
   fans: [
     { id: 'fan12', x: 2080, y: 380, w: 60, h: 150, force: 18 },
   ],
-  crumbles: [
+    crumbles: [
     { x: 880, y: 300, w: 80, h: 20 },
     { x: 1560, y: 400, w: 80, h: 20 },
     { x: 2360, y: 640, w: 80, h: 20 },
@@ -65,24 +65,21 @@ export const level12: LevelDef = {
     { x: 1340, y: 420, w: 180 },
     { x: 2100, y: 640, w: 170 },
   ],
-  bumpers: [
-    { x: 1100, y: 390, dir: 1 },
-    { x: 2600, y: 690, dir: -1 },
-  ],
+    
   timedPlatforms: [
     { x: 1080, y: 280, w: 90, h: 18, onMs: 1250, offMs: 700 },
     { x: 2040, y: 760, w: 90, h: 18, onMs: 1200, offMs: 650 },
   ],
-  geysers: [
-    { x: 620, y: 300, intervalMs: 1700, force: 700 },
-    { x: 2000, y: 880, intervalMs: 1900, force: 660 },
+      geysers: [
+    { x: 537, y: 740, intervalMs: 1700, force: 700 },
+    { x: 1957, y: 880, intervalMs: 1900, force: 660 },
   ],
   gates: [{ id: 'gate12', x: 2720, y: 740, w: 28, h: 80 }],
-  levers: [
-    { x: 2860, y: 820, targetId: 'gate12', targetType: 'gate' },
-    { x: 1840, y: 400, targetId: 'cv12', targetType: 'conveyor' },
-    { x: 1280, y: 840, targetId: 'cv12b', targetType: 'conveyor' },
-    { x: 2180, y: 560, targetId: 'fan12', targetType: 'fan' },
+      levers: [
+    { x: 2796, y: 820, targetId: 'gate12', targetType: 'gate' },
+    { x: 2013, y: 520, targetId: 'cv12', targetType: 'conveyor' },
+    { x: 1013, y: 340, targetId: 'cv12b', targetType: 'conveyor' },
+    { x: 2333, y: 600, targetId: 'fan12', targetType: 'fan' },
   ],
   breakables: [
     { x: 600, y: 220, w: 48, h: 48, hits: 1 },
@@ -92,25 +89,25 @@ export const level12: LevelDef = {
     { id: 'p12a', x: 860, y: 120, pairId: 'p12b' },
     { id: 'p12b', x: 1560, y: 880, pairId: 'p12a' },
   ],
-  spikes: [
-    { x: 540, y: 300, count: 3 },
-    { x: 1200, y: 400, count: 3 },
-    { x: 1840, y: 520, count: 4 },
-    { x: 2320, y: 700, count: 4 },
-    { x: 1000, y: 820, count: 4 },
-    { x: 2080, y: 900, count: 4 },
-    { x: 1580, y: 440, count: 3 },
+      spikes: [
+    { x: 413, y: 240, count: 3 },
+    { x: 833, y: 260, count: 3 },
+    { x: 2067, y: 520, count: 4 },
+    { x: 2440, y: 400, count: 4 },
+    { x: 593, y: 740, count: 4 },
+    { x: 2013, y: 880, count: 4 },
+    { x: 1643, y: 200, count: 3 },
   ],
-  acidPools: [
-    { x: 1520, y: 360, w: 90 },
-    { x: 1240, y: 880, w: 88 },
-    { x: 2780, y: 820, w: 80 },
+      acidPools: [
+    { x: 2540, y: 700, w: 90 },
+    { x: 2353, y: 900, w: 88 },
+    { x: 112, y: 180, w: 80 },
   ],
-  flameVents: [
-    { x: 800, y: 260, intervalMs: 650, height: 145 },
-    { x: 1320, y: 400, intervalMs: 700, height: 140 },
-    { x: 820, y: 820, intervalMs: 650, height: 135 },
-    { x: 2980, y: 820, intervalMs: 750, height: 130 },
+      flameVents: [
+    { x: 500, y: 480, intervalMs: 650, height: 145 },
+    { x: 387, y: 620, intervalMs: 700, height: 140 },
+    { x: 224, y: 180, intervalMs: 650, height: 135 },
+    { x: 2964, y: 820, intervalMs: 750, height: 130 },
   ],
   pads: [
     { x: 400, y: 200 },

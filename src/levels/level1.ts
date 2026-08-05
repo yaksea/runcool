@@ -33,24 +33,29 @@ export const level1: LevelDef = {
     { x: 640, y: 200, w: 40, h: 160 },
   ],
   conveyors: [{ x: 920, y: 520, w: 180, h: 28, dir: 1, speed: 140 }],
-  crumbles: [{ x: 820, y: 480, w: 90, h: 22 }],
-  spikes: [
-    { x: 720, y: 480, count: 4 },
-    { x: 1240, y: 400, count: 4 },
-    { x: 900, y: 240, count: 3 },
+    crumbles: [
+    { x: 868, y: 240, w: 90, h: 22 },
   ],
-  flameVents: [
-    { x: 1000, y: 440, intervalMs: 700, height: 145 },
-    { x: 1480, y: 360, intervalMs: 650, height: 140 },
+      spikes: [
+    { x: 573, y: 520, count: 4 },
+    { x: 1253, y: 400, count: 4 },
+    { x: 727, y: 200, count: 3 },
   ],
-  acidPools: [
-    { x: 540, y: 520, w: 88 },
-    { x: 1180, y: 280, w: 80 },
+      flameVents: [
+    { x: 975, y: 440, intervalMs: 700, height: 145 },
+    { x: 1553, y: 360, intervalMs: 650, height: 140 },
+  ],
+      acidPools: [
+    { x: 393, y: 560, w: 88 },
+    { x: 1160, y: 280, w: 80 },
   ],
   pads: [{ x: 1120, y: 256 }],
   enemies: [
     { type: 'slime', x: 720, y: 440, patrol: 50 },
     { type: 'slime', x: 1300, y: 360, patrol: 45 },
+    { type: 'hopper', x: 1000, y: 400, patrol: 40 },
+    { type: 'slime', x: 500, y: 160, patrol: 40 },
+    { type: 'floater', x: 860, y: 180, patrol: 55 },
   ],
   weapons: [{ type: 'glove', x: 1500, y: 320 }],
   coins: [

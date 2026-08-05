@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
+import { PetCompanion, type PetBehavior } from '../entities/PetCompanion';
 import { WeaponPickup } from '../entities/WeaponPickup';
 import { CoinPickup } from '../entities/CoinPickup';
 import { fireProjectile, retirePhysicsSprite, segmentHitsBody } from '../entities/Projectile';
@@ -12,6 +13,7 @@ import { PortalPairSystem } from '../entities/Portal';
 import { Geyser } from '../entities/Geyser';
 import { FlameVent } from '../entities/FlameVent';
 import { AcidPool } from '../entities/AcidPool';
+import { ToxicZone } from '../entities/ToxicZone';
 import { TimedPlatform } from '../entities/TimedPlatform';
 import { InteractSystem } from '../entities/Interactables';
 import { getLevelById, isTutorialLevel, LEVELS } from '../levels';
@@ -22,7 +24,7 @@ import {
   tipForEnemyType,
   type TutorialZone,
 } from '../game/tutorialAssist';
-import { ZH, skillLabel, specialLabel, weaponLabel, weaponPickupToast } from '../i18n/zh';
+import { ZH, hudSkillShort, hudWeaponShort, weaponPickupToast } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { WEAPON_STATS } from '../game/weapons';
 import {
@@ -30,7 +32,6 @@ import {
   missileCooldownMs,
   missileSalvoCount,
   orbitCapacity,
-  orbitShieldsUnlocked,
   shapeById,
   skillById,
   skinById,
@@ -62,6 +63,8 @@ export class GameScene extends Phaser.Scene {
   private pads!: Phaser.Physics.Arcade.StaticGroup;
   private finish!: Phaser.Physics.Arcade.Sprite;
   private enemies: Enemy[] = [];
+  private pet: PetCompanion | null = null;
+  private petMenuOpen = false;
   /** Overworld spawn points: death→respawn, alive→reinforce, every 30s. */
   private spawnPoints: {
     def: EnemyDef;
@@ -98,12 +101,15 @@ export class GameScene extends Phaser.Scene {
   private keyK!: Phaser.Input.Keyboard.Key;
   private keyM!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
+  private keyL!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
   private skillReadyAt = 0;
   private missileReadyAt = 0;
   private orbitReadyAt = 0;
+  private nukeReadyAt = 0;
+  private nukeLaunching = false;
   private missiles: {
     sprite: Phaser.Physics.Arcade.Sprite;
     target: Enemy | null;
@@ -135,6 +141,7 @@ export class GameScene extends Phaser.Scene {
   private geysers: Geyser[] = [];
   private flameVents: FlameVent[] = [];
   private acidPools: AcidPool[] = [];
+  private toxicZones: ToxicZone[] = [];
   private timedPlatforms: TimedPlatform[] = [];
   private interact!: InteractSystem;
   private conveyors: {
@@ -165,6 +172,8 @@ export class GameScene extends Phaser.Scene {
     this.level = level;
     this.enemies = [];
     this.spawnPoints = [];
+    this.pet?.destroy();
+    this.pet = null;
     this.tutorialZones = [];
     this.lastTutorialZoneId = null;
     this.tutorialAssistOn = SaveSystem.load().tutorialAssist !== false;
@@ -181,6 +190,8 @@ export class GameScene extends Phaser.Scene {
     this.geysers = [];
     this.flameVents = [];
     this.acidPools = [];
+    this.toxicZones.forEach((z) => z.destroy());
+    this.toxicZones = [];
     this.timedPlatforms = [];
     this.conveyors = [];
     this.checkpointFloorIds = null;
@@ -191,11 +202,14 @@ export class GameScene extends Phaser.Scene {
     this.runActive = true;
     this.paused = false;
     this.inventoryOpen = false;
+    this.petMenuOpen = false;
     this.adOpen = false;
     this.dying = false;
     this.skillReadyAt = 0;
     this.missileReadyAt = 0;
     this.orbitReadyAt = 0;
+    this.nukeReadyAt = 0;
+    this.nukeLaunching = false;
     this.missiles = [];
     this.orbitBaseAngle = 0;
     this.orbitRing?.destroy();
@@ -258,6 +272,7 @@ export class GameScene extends Phaser.Scene {
     this.buildFinish();
     this.buildPipeAndArena();
     this.spawnPlayer();
+    this.spawnPet();
     this.spawnEnemies();
     this.spawnWeapons();
     this.spawnCoins();
@@ -342,6 +357,8 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off(Phaser.Scenes.Events.PRE_UPDATE, this.preUpdateGunStompGuard, this);
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
+      this.pet?.destroy();
+      this.pet = null;
     });
 
     if (this.scene.isActive('UIScene') || this.scene.isSleeping('UIScene')) {
@@ -368,12 +385,12 @@ export class GameScene extends Phaser.Scene {
     if (this.runActive && !this.dying) {
       if (Phaser.Input.Keyboard.JustDown(this.keyB)) {
         this.toggleInventory();
-      } else if (Phaser.Input.Keyboard.JustDown(this.keyP) && !this.inventoryOpen) {
+      } else if (Phaser.Input.Keyboard.JustDown(this.keyP) && !this.inventoryOpen && !this.petMenuOpen) {
         this.togglePause();
       }
     }
 
-    if (!this.runActive || this.paused || this.inventoryOpen || this.dying) return;
+    if (!this.runActive || this.paused || this.inventoryOpen || this.petMenuOpen || this.dying) return;
 
     // Attack first so stomp suppression is active before contact checks feel "gun OHKO".
     if (Phaser.Input.Keyboard.JustDown(this.keyJ)) {
@@ -404,6 +421,9 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyM)) {
       this.tryUseMissile();
     }
+    if (Phaser.Input.Keyboard.JustDown(this.keyL)) {
+      this.tryUseNuke();
+    }
     if (this.keyN.isDown) {
       if (SaveSystem.isSpecialEquipped('orbit')) {
         this.tryUseOrbit(true);
@@ -419,6 +439,10 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('interactHint', hint?.hint ?? '');
 
     this.enemies.forEach((e) => e.update(this.player));
+    this.pet?.update(this.player, this.enemies, delta, (amount) => {
+      SaveSystem.addCoins(amount);
+      this.events.emit('hud', this.getHudPayload());
+    });
     this.updateSpawnPoints();
     this.updateTutorialAssist();
     this.player.tickVitals(delta);
@@ -441,6 +465,9 @@ export class GameScene extends Phaser.Scene {
     for (const pool of this.acidPools) {
       if (pool.update(this.player, this.enemies)) this.hurtPlayer();
     }
+    for (const zone of this.toxicZones) {
+      zone.update(this.enemies, delta);
+    }
     this.timedPlatforms.forEach((t) => t.update());
     this.applyConveyors(delta);
     this.checkFallDeath();
@@ -451,14 +478,14 @@ export class GameScene extends Phaser.Scene {
 
   /** Keep stomp suppressed while firing so gun+contact never looks like a bullet OHKO. */
   private preUpdateGunStompGuard(): void {
-    if (!this.runActive || this.paused || this.inventoryOpen || this.dying || !this.keyJ) return;
+    if (!this.runActive || this.paused || this.inventoryOpen || this.petMenuOpen || this.dying || !this.keyJ) return;
     if (this.keyJ.isDown || this.hasLivePlayerShot()) {
       this.stompSuppressUntil = Math.max(this.stompSuppressUntil, this.time.now + 200);
     }
   }
 
   private postUpdateSeesaws(): void {
-    if (!this.runActive || this.paused || this.inventoryOpen || this.dying || !this.player) return;
+    if (!this.runActive || this.paused || this.inventoryOpen || this.petMenuOpen || this.dying || !this.player) return;
     this.seesaws.forEach((s) => s.supportPlayer(this.player));
   }
 
@@ -474,6 +501,7 @@ export class GameScene extends Phaser.Scene {
     this.keyK = kb.addKey(Phaser.Input.Keyboard.KeyCodes.K);
     this.keyM = kb.addKey(Phaser.Input.Keyboard.KeyCodes.M);
     this.keyN = kb.addKey(Phaser.Input.Keyboard.KeyCodes.N);
+    this.keyL = kb.addKey(Phaser.Input.Keyboard.KeyCodes.L);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyX = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
@@ -1062,6 +1090,9 @@ export class GameScene extends Phaser.Scene {
     this.player.restoreVitals();
     this.player.makeInvincible(this.time.now, PIPE_ENTER_INVINCIBLE_MS);
     this.portals?.suppress(PIPE_ENTER_INVINCIBLE_MS);
+    if (this.pet?.sprite.active) {
+      this.pet.sprite.setPosition(spawnX - 28, spawnY - 8);
+    }
 
     this.spawnArenaEnemies();
     this.events.emit('toast', ZH.pipeEnter(pipeArenaReward(this.level.index)));
@@ -1182,6 +1213,9 @@ export class GameScene extends Phaser.Scene {
     this.player.setVitals(this.pipeSavedVitals.hp, this.pipeSavedVitals.armor);
     this.player.makeInvincible(this.time.now, fromDeath ? 1200 : 800);
     this.portals?.suppress(1500);
+    if (this.pet?.sprite.active) {
+      this.pet.sprite.setPosition(x - 28, y - 8);
+    }
     this.cameras.main.centerOn(x, y);
     this.events.emit('hud', this.getHudPayload());
   }
@@ -1202,10 +1236,60 @@ export class GameScene extends Phaser.Scene {
       shapeById(save.equippedShape).texture,
       skinById(save.equippedSkin).tint,
     );
+    this.player.setImmortal(save.equippedPassive === 'immortal');
+  }
+
+  private spawnPet(): void {
+    this.pet?.destroy();
+    this.pet = null;
+    const save = SaveSystem.load();
+    if (save.equippedPet === 'none') return;
+    this.pet = new PetCompanion(this, save.equippedPet, this.player, () => this.openPetMenu());
+  }
+
+  openPetMenu(): void {
+    if (!this.pet || this.dying || this.adOpen) return;
+    if (!this.runActive) return;
+    if (this.inventoryOpen) {
+      this.inventoryOpen = false;
+      this.events.emit('inventory', { open: false });
+    }
+    if (this.paused) {
+      this.paused = false;
+      this.events.emit('pause', false);
+    }
+    if (this.petMenuOpen) return;
+    this.petMenuOpen = true;
+    this.physics.pause();
+    this.events.emit('petMenu', {
+      open: true,
+      petId: this.pet.id,
+      behavior: this.pet.behavior,
+    });
+  }
+
+  setPetBehavior(mode: PetBehavior): void {
+    if (!this.pet) return;
+    this.pet.setBehavior(mode);
+    const toast =
+      mode === 'play'
+        ? ZH.petModePlayToast
+        : mode === 'attack'
+          ? ZH.petModeAttackToast
+          : ZH.petModeQuietToast;
+    this.events.emit('toast', toast);
+    this.closePetMenu();
+  }
+
+  closePetMenu(): void {
+    if (!this.petMenuOpen) return;
+    this.petMenuOpen = false;
+    this.physics.resume();
+    this.events.emit('petMenu', { open: false });
   }
 
   /** Overworld (non-pipe) enemy density vs authored level defs. */
-  private static readonly OVERWORLD_ENEMY_MULT = 3;
+  private static readonly OVERWORLD_ENEMY_MULT = 5;
   /** Respawn / reinforce interval at each overworld spawn point. */
   private static readonly SPAWN_REFRESH_MS = 30_000;
   /** Soft cap of living monsters tied to one spawn point (primary + extras). */
@@ -1225,7 +1309,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      // 3× refresh: place clones on different nearby platforms, not a tight cluster.
+      // Spread clones across nearby platforms so spawn points cover more of the route.
       for (const spot of this.spreadEnemySpots(def, GameScene.OVERWORLD_ENEMY_MULT)) {
         this.registerSpawnPoint({ ...def, ...spot });
       }
@@ -1387,7 +1471,7 @@ export class GameScene extends Phaser.Scene {
         return { f, dist };
       })
       .filter(({ f, dist }) => {
-        if (dist > 520) return false;
+        if (dist > 720) return false;
         // Keep some room so clones don't sit on the exact same slab when possible.
         if (f.id === homeId && count > 1) return false;
         return true;
@@ -1406,7 +1490,7 @@ export class GameScene extends Phaser.Scene {
       if (pick) {
         usedFloor.add(pick.f.id);
         const margin = 28;
-        const t = 0.25 + ((i * 0.31) % 0.5);
+        const t = 0.2 + ((i * 0.27) % 0.55);
         const x = Phaser.Math.Clamp(
           pick.f.x + margin + t * Math.max(16, pick.f.w - margin * 2),
           pick.f.x + margin,
@@ -1423,11 +1507,11 @@ export class GameScene extends Phaser.Scene {
 
       // Fallback: wide horizontal stagger when no free floor is nearby.
       const side = i % 2 === 0 ? 1 : -1;
-      const step = 90 + i * 55;
+      const step = 110 + i * 70;
       spots.push({
         x: def.x + side * step,
-        y: flying ? def.y - 24 * i : def.y,
-        patrol: Math.max(20, def.patrol - i * 8),
+        y: flying ? def.y - 20 * i : def.y,
+        patrol: Math.max(20, def.patrol - i * 6),
       });
     }
 
@@ -1693,6 +1777,149 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('hud', this.getHudPayload());
   }
 
+  private static readonly NUKE_COOLDOWN_MS = 20_000;
+
+  private tryUseNuke(): void {
+    const save = SaveSystem.load();
+    if (save.equippedPassive !== 'nuke') {
+      this.events.emit('toast', ZH.noNukeEquipped);
+      return;
+    }
+    if (this.nukeLaunching) {
+      this.events.emit('toast', ZH.nukeLaunching);
+      return;
+    }
+    const now = this.time.now;
+    if (now < this.nukeReadyAt) {
+      this.events.emit('toast', ZH.nukeCooldown);
+      return;
+    }
+    if (!this.player || this.dying || !this.runActive) return;
+
+    this.nukeReadyAt = now + GameScene.NUKE_COOLDOWN_MS;
+    this.nukeLaunching = true;
+    this.events.emit('toast', ZH.nukeLaunching);
+    this.events.emit('hud', this.getHudPayload());
+    SoundSystem.skill('nuke');
+
+    const px = this.player.sprite.x;
+    const py = this.player.sprite.y;
+    const rocket = this.add.image(px, py - 12, 'nuke').setDepth(16).setScale(0.85);
+    const exhaust = this.add
+      .ellipse(px, py + 10, 14, 22, 0xf39c12, 0.75)
+      .setDepth(15);
+
+    // Exhaust plume trails the rocket while it climbs.
+    this.tweens.add({
+      targets: exhaust,
+      scaleX: { from: 0.8, to: 1.35 },
+      scaleY: { from: 0.7, to: 1.5 },
+      alpha: { from: 0.9, to: 0.25 },
+      duration: 180,
+      yoyo: true,
+      repeat: 5,
+    });
+
+    this.tweens.add({
+      targets: [rocket, exhaust],
+      y: py - 420,
+      duration: 780,
+      ease: 'Cubic.easeIn',
+      onUpdate: () => {
+        exhaust.x = rocket.x;
+        exhaust.y = rocket.y + 28;
+      },
+      onComplete: () => {
+        rocket.destroy();
+        exhaust.destroy();
+        this.detonateNuke(px, py - 200);
+      },
+    });
+
+    // Smoke puffs along the ascent path.
+    for (let i = 0; i < 6; i++) {
+      this.time.delayedCall(80 + i * 110, () => {
+        if (!this.sys.isActive()) return;
+        const puffY = py - 20 - i * 55;
+        const puff = this.add
+          .circle(px + (i % 2 === 0 ? -8 : 8), puffY, 10 + i, 0xbdc3c7, 0.55)
+          .setDepth(14);
+        this.tweens.add({
+          targets: puff,
+          alpha: 0,
+          scale: 2.2,
+          duration: 420,
+          onComplete: () => puff.destroy(),
+        });
+      });
+    }
+  }
+
+  private detonateNuke(flashX: number, flashY: number): void {
+    this.nukeLaunching = false;
+    this.cameras.main.flash(280, 255, 220, 140);
+    this.cameras.main.shake(420, 0.018);
+    SoundSystem.interact('break');
+    SoundSystem.skill('nuke');
+
+    // Multi-burst VFX around the blast epicenter and nearby spawns.
+    const bursts: { x: number; y: number }[] = [{ x: flashX, y: flashY }];
+    for (const point of this.spawnPoints) {
+      bursts.push({ x: point.def.x, y: point.def.y });
+    }
+    const seen = new Set<string>();
+    for (const b of bursts) {
+      const key = `${Math.round(b.x / 40)}_${Math.round(b.y / 40)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (seen.size > 18) break;
+      const boom = this.add.image(b.x, b.y, 'explosion').setDepth(18).setScale(0.5);
+      this.tweens.add({
+        targets: boom,
+        scale: 2.8,
+        alpha: 0,
+        duration: 520,
+        ease: 'Quad.easeOut',
+        onComplete: () => boom.destroy(),
+      });
+    }
+
+    // Wipe every living monster (overworld + pipe arena).
+    for (const e of [...this.enemies]) {
+      if (!e.dead && e.sprite.active) e.instantKill();
+    }
+
+    this.seedToxicZonesAtSpawns();
+    this.events.emit('hud', this.getHudPayload());
+  }
+
+  /** Leave poison fields on overworld respawn points (deduped). */
+  private seedToxicZonesAtSpawns(): void {
+    const spots: { x: number; y: number }[] = [];
+    if (this.spawnPoints.length > 0) {
+      for (const point of this.spawnPoints) {
+        spots.push({ x: point.def.x, y: point.def.y });
+      }
+    } else {
+      for (const def of this.level.enemies) {
+        const minCp = def.afterCheckpoint ?? -1;
+        if (minCp > this.checkpointIndex) continue;
+        spots.push({ x: def.x, y: def.y });
+      }
+    }
+
+    const existingKeys = new Set(
+      this.toxicZones.map((z) => `${Math.round(z.x / 48)}_${Math.round(z.y / 48)}`),
+    );
+
+    for (const spot of spots) {
+      const key = `${Math.round(spot.x / 48)}_${Math.round(spot.y / 48)}`;
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      this.toxicZones.push(new ToxicZone(this, spot.x, spot.y));
+    }
+  }
+
   /**
    * @param held When true (long-press), skip failure toasts and pace spawns so the ring fills smoothly.
    */
@@ -1767,7 +1994,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Orbit skill: free auto-shield ring while equipped; optional missiles orbit on the same circle.
+   * Orbit missiles circle the player when N is equipped.
+   * Reflect / repulse shields equip independently (no orbit required).
    */
   private updateOrbitMissiles(delta: number): void {
     if (!this.player) return;
@@ -1775,21 +2003,16 @@ export class GameScene extends Phaser.Scene {
     const py = this.player.sprite.y;
     const orbitEquipped = SaveSystem.isSpecialEquipped('orbit');
     const orbiting = this.missiles.filter((m) => m.orbiting && m.sprite.active);
+    const reflectOn = SaveSystem.isShieldEquipped('reflect');
+    const repulseOn = SaveSystem.isShieldEquipped('repulse');
 
     this.orbitBaseAngle = Phaser.Math.Angle.Wrap(this.orbitBaseAngle + 0.0024 * delta);
 
-    // Shields unlock only after owning everything in the shop (still need orbit equipped).
-    if (orbitEquipped) {
-      const save = SaveSystem.load();
-      const shieldsOn = orbitShieldsUnlocked(save);
-      if (shieldsOn) {
-        const shieldR = GameScene.ORBIT_SHIELD_RADIUS;
-        this.drawOrbitShield(px, py, shieldR, orbiting.length, true);
-        this.reflectHazardsWithOrbitShield(px, py, shieldR);
-        this.repulseEnemiesWithOrbitShield(px, py, shieldR);
-      } else {
-        this.orbitRing?.clear();
-      }
+    if (reflectOn || repulseOn) {
+      const shieldR = GameScene.ORBIT_SHIELD_RADIUS;
+      this.drawOrbitShield(px, py, shieldR, orbiting.length, true);
+      if (reflectOn) this.reflectHazardsWithOrbitShield(px, py, shieldR);
+      if (repulseOn) this.repulseEnemiesWithOrbitShield(px, py, shieldR);
     } else {
       this.orbitRing?.clear();
     }
@@ -2147,9 +2370,28 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.player.sprite.y > this.level.worldHeight - 20) {
+      if (this.player.isImmortal()) {
+        this.rescueImmortalFall();
+        return;
+      }
       // Void fall: instant checkpoint respawn (full vitals restore).
       this.killPlayer();
     }
+  }
+
+  /** Immortal passive: soft-land at checkpoint / start without counting a death. */
+  private rescueImmortalFall(): void {
+    let x = this.level.playerStart.x;
+    let y = this.level.playerStart.y;
+    if (this.checkpointIndex >= 0) {
+      const cp = this.level.checkpoints[this.checkpointIndex];
+      x = cp.x;
+      y = cp.y - 20;
+    }
+    this.player.respawn(x, y);
+    this.player.setImmortal(true);
+    this.portals?.suppress(800);
+    this.cameras.main.centerOn(x, y);
   }
 
   /** Monster / spike / spit: 1 armor, else 1 HP. Death → checkpoint. */
@@ -2221,6 +2463,7 @@ export class GameScene extends Phaser.Scene {
         y = cp.y - 20;
       }
       this.player.respawn(x, y);
+      this.player.setImmortal(SaveSystem.load().equippedPassive === 'immortal');
       this.player.makeInvincible(this.time.now, 1000);
       this.portals?.suppress(1500);
       this.dying = false;
@@ -2263,13 +2506,17 @@ export class GameScene extends Phaser.Scene {
     const now = this.time.now;
     const cdLeft = Math.max(0, this.skillReadyAt - now);
     const missileCdLeft = Math.max(0, this.missileReadyAt - now);
+    const nukeCdLeft = Math.max(0, this.nukeReadyAt - now);
     const parts: string[] = [];
     if (save.equippedSpecials.includes('missile')) {
-      parts.push(`M ${specialLabel('missile')} CD${save.missileLevel}/齐射${save.missileSalvoLevel}`);
+      parts.push(`M${save.missileLevel}/${save.missileSalvoLevel}`);
     }
     if (save.equippedSpecials.includes('orbit')) {
       const n = this.missiles.filter((m) => m.orbiting).length;
-      parts.push(`N ${specialLabel('orbit')} 存${save.orbitLevel}(${n}/${orbitCapacity(save.orbitLevel)})`);
+      parts.push(`N${n}/${orbitCapacity(save.orbitLevel)}`);
+    }
+    if (save.equippedPassive === 'nuke') {
+      parts.push(nukeCdLeft > 0 ? `L${Math.ceil(nukeCdLeft / 1000)}` : 'L核');
     }
     return {
       timeMs: Math.floor(this.elapsedMs),
@@ -2279,17 +2526,17 @@ export class GameScene extends Phaser.Scene {
       maxHp: this.player.maxHp,
       armor: this.player.armor,
       maxArmor: this.player.maxArmor,
-      weaponLabel: weaponLabel(this.player.weapon),
-      skillLabel: skillLabel(save.equippedSkill),
+      weaponLabel: hudWeaponShort(this.player.weapon),
+      skillLabel: hudSkillShort(save.equippedSkill),
       skillCdMs: cdLeft,
-      specialLabel: parts.length > 0 ? parts.join(' · ') : ZH.specialNone,
+      specialLabel: parts.length > 0 ? parts.join(' ') : '无',
       specialCdMs: missileCdLeft,
       levelIndex: this.level.index,
     };
   }
 
   togglePause(): void {
-    if (this.dying || this.inventoryOpen || this.adOpen) return;
+    if (this.dying || this.inventoryOpen || this.petMenuOpen || this.adOpen) return;
     if (!this.runActive && !this.paused) return;
     this.paused = !this.paused;
     if (this.paused) {
@@ -2307,6 +2554,10 @@ export class GameScene extends Phaser.Scene {
     if (this.inventoryOpen) {
       this.inventoryOpen = false;
       this.events.emit('inventory', { open: false });
+    }
+    if (this.petMenuOpen) {
+      this.petMenuOpen = false;
+      this.events.emit('petMenu', { open: false });
     }
     if (this.paused) {
       this.paused = false;
@@ -2348,7 +2599,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   toggleInventory(): void {
-    if (this.dying || this.paused || this.adOpen) return;
+    if (this.dying || this.paused || this.petMenuOpen || this.adOpen) return;
     if (!this.runActive && !this.inventoryOpen) return;
     this.inventoryOpen = !this.inventoryOpen;
     if (this.inventoryOpen) {

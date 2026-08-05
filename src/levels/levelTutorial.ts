@@ -186,10 +186,11 @@ export const levelTutorial: LevelDef = {
   pipe: { x: 6980, y: 560 },
 
   checkpoints: [
-    { x: 900, y: 560 },
-    { x: 1760, y: 560 },
-    { x: 3240, y: 560 },
-    { x: 5120, y: 560 },
-    { x: 6480, y: 560 },
+    // Sit on continuous ground slabs — never over gaps / cliffs.
+    { x: 400, y: 560 },
+    { x: 1300, y: 560 },
+    { x: 2500, y: 560 },
+    { x: 4640, y: 560 },
+    { x: 6620, y: 560 },
   ],
 };

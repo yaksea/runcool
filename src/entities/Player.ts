@@ -173,6 +173,13 @@ export class Player {
     this.armorRegenAcc = 0;
   }
 
+  /** Restore a specific HP / armor snapshot (e.g. after leaving pipe arena). */
+  setVitals(hp: number, armor: number): void {
+    this.hp = Phaser.Math.Clamp(Math.floor(hp), 0, this.maxHp);
+    this.armor = Phaser.Math.Clamp(Math.floor(armor), 0, this.maxArmor);
+    this.armorRegenAcc = 0;
+  }
+
   update(
     cursors: Phaser.Types.Input.Keyboard.CursorKeys,
     keys: {

@@ -51,6 +51,32 @@ export const ZH = {
   skillBlinkDesc: 'K：向前短距瞬移',
   skillHasteDesc: 'K：短时大幅加速',
   skillFlightDesc: 'K：短时自由飞行',
+  shopSpecials: '特殊技能（可另装，按 N）',
+  special: '特殊',
+  specialNone: '无特殊技能',
+  specialMissile: '追踪导弹',
+  specialMissileDesc: 'N：飞向最近怪并爆炸秒杀',
+  specialMissileLv: (
+    cdLv: number,
+    cdMax: number,
+    cdSec: string,
+    salvoLv: number,
+    salvoMax: number,
+    salvoCount: number,
+  ) =>
+    `冷却 Lv.${cdLv}/${cdMax} ${cdSec}s · 齐射 Lv.${salvoLv}/${salvoMax} 每次${salvoCount}发`,
+  specialOrbit: '环绕导弹',
+  specialOrbitDesc: 'N：无怪也可发射，长按连续装填，环绕待命，遇敌自动出击',
+  specialOrbitLv: (lv: number, max: number, cap: number) =>
+    `存储 Lv.${lv}/${max} · 最多环绕 ${cap} 枚`,
+  specialUpgrade: (price: number) => `升级 ${price}`,
+  specialUpgradeCd: (price: number) => `冷却 ${price}`,
+  specialUpgradeSalvo: (price: number) => `齐射 ${price}`,
+  specialUpgradeOrbit: (price: number) => `存储 ${price}`,
+  specialMaxLevel: '已满级',
+  noSpecialEquipped: '未装备特殊技能，去商店看看吧',
+  noMissileTarget: '附近没有可锁定的怪兽',
+  orbitMissileFull: '环绕导弹已满，先等它们出击吧',
   weaponNone: '徒手',
   weaponGlove: '弹力拳套',
   weaponPeashooter: '弹珠枪',
@@ -83,7 +109,7 @@ export const ZH = {
   adSkipCoins: (n: number) => `跳关奖励：金币 +${n}`,
   adSkipHint: '观看 30 秒推荐动画，传送终点并收下本关全部金币',
   pipeHint: '按 X 进入挑战管道',
-  pipeEnter: '进入怪兽境界！清空它们可获 50 金币',
+  pipeEnter: '进入怪兽境界！开场 5 秒无敌，清空它们可获 50 金币',
   pipeClear: '挑战成功！金币 +50',
   pipeFail: '挑战失败，管道已关闭',
   pipeSealed: '管道已关闭',
@@ -94,7 +120,7 @@ export const ZH = {
   rating: '评价',
   nextLevel: '下一关',
   playAgain: '再玩一次',
-  controls: 'A/D 移动，空格跳，X 互动，J 攻击，K 技能，B 背包，P 暂停',
+  controls: 'A/D 移动，空格跳，X 互动，J 攻击，K 技能，N 导弹，B 背包，P 暂停',
   interactBreak: '按 X 破坏',
   interactControl: '按 X 操控',
   brokeBlock: '机关已破坏！',
@@ -204,5 +230,25 @@ export function skillDesc(id: 'blink' | 'haste' | 'flight'): string {
       return ZH.skillHasteDesc;
     case 'flight':
       return ZH.skillFlightDesc;
+  }
+}
+
+export function specialLabel(id: 'none' | 'missile' | 'orbit'): string {
+  switch (id) {
+    case 'missile':
+      return ZH.specialMissile;
+    case 'orbit':
+      return ZH.specialOrbit;
+    default:
+      return ZH.specialNone;
+  }
+}
+
+export function specialDesc(id: 'missile' | 'orbit'): string {
+  switch (id) {
+    case 'missile':
+      return ZH.specialMissileDesc;
+    case 'orbit':
+      return ZH.specialOrbitDesc;
   }
 }

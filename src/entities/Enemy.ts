@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import type { EnemyDef, EnemyType } from '../levels/types';
 import type { Player } from './Player';
 
-export type EnemyFireHazard = (x: number, y: number, dir: number) => void;
+export type EnemyFireOpts = { homing?: boolean; speed?: number; vy?: number };
+export type EnemyFireHazard = (x: number, y: number, dir: number, opts?: EnemyFireOpts) => void;
 
 const HP_BAR_W = 48;
 const HP_BAR_H = 8;
@@ -43,25 +44,35 @@ export class Enemy {
   private dir = 1;
   private readonly baseY: number;
   private hopCooldown = 0;
-  private spitCooldown = 0;
+  /** Stagger first volley so a pack doesn't all fire on the same frame. */
+  private spitCooldown = 500 + Math.random() * 1200;
   private phase = Math.random() * Math.PI * 2;
   private readonly hpBg: Phaser.GameObjects.Rectangle;
   private readonly hpFill: Phaser.GameObjects.Rectangle;
   private readonly fireHazard?: EnemyFireHazard;
+  private readonly onDied?: (enemy: Enemy) => void;
   private wobbleTween?: Phaser.Tweens.Tween;
   private hurtUntil = 0;
   private stompImmuneUntil = 0;
 
-  constructor(scene: Phaser.Scene, def: EnemyDef, fireHazard?: EnemyFireHazard) {
+  constructor(
+    scene: Phaser.Scene,
+    def: EnemyDef,
+    fireHazard?: EnemyFireHazard,
+    /** Optional hit override (e.g. pipe arena = 3 shots). */
+    hitsOverride?: number,
+    onDied?: (enemy: Enemy) => void,
+  ) {
     this.type = def.type;
     this.afterCheckpoint = def.afterCheckpoint ?? -1;
     this.spawnDef = def;
     this.originX = def.x;
     this.patrol = def.patrol;
     this.baseY = def.y;
-    this.maxHits = hitsFor(def.type);
+    this.maxHits = hitsOverride ?? hitsFor(def.type);
     this.hitsLeft = this.maxHits;
     this.fireHazard = fireHazard;
+    this.onDied = onDied;
 
     this.sprite = scene.physics.add.sprite(def.x, def.y, def.type);
     this.sprite.setDepth(8);
@@ -152,6 +163,7 @@ export class Enemy {
       x = this.sprite.x + this.dir * 0.85;
       this.placeFlying(x, y);
       this.sprite.setFlipX(this.dir < 0);
+      if (player) this.tryHomingShot(player, 300, 2200, 170);
       this.syncHpBar();
       return;
     }
@@ -172,6 +184,7 @@ export class Enemy {
       this.placeFlying(x, y);
       this.sprite.setFlipX(this.dir < 0);
       this.sprite.rotation = Math.sin(t * 3) * 0.15;
+      if (player) this.tryHomingShot(player, 280, 1900, 190);
       this.syncHpBar();
       return;
     }
@@ -195,6 +208,7 @@ export class Enemy {
       }
       this.placeFlying(x, y);
       this.sprite.setFlipX(this.dir < 0);
+      if (player) this.tryHomingShot(player, 320, 2400, 160);
       this.syncHpBar();
       return;
     }
@@ -227,19 +241,7 @@ export class Enemy {
       if (body.blocked.right) this.dir = -1;
     } else if (this.type === 'spitter') {
       body.setVelocityX(this.dir * 22);
-      this.spitCooldown -= 16;
-      if (player && this.spitCooldown <= 0 && this.fireHazard) {
-        const dx = player.sprite.x - this.sprite.x;
-        if (Math.abs(dx) < 340 && Math.abs(player.sprite.y - this.sprite.y) < 90) {
-          this.dir = dx >= 0 ? 1 : -1;
-          this.fireHazard(this.sprite.x + this.dir * 18, this.sprite.y - 4, this.dir);
-          this.spitCooldown = 1400;
-          this.sprite.setTint(0xffeaa7);
-          this.sprite.scene.time.delayedCall(90, () => {
-            if (!this.dead && this.sprite.active) this.sprite.clearTint();
-          });
-        }
-      }
+      if (player) this.tryHomingShot(player, 360, 1200, 210);
     } else {
       const speed =
         this.type === 'tank'
@@ -265,9 +267,38 @@ export class Enemy {
     if (this.type === 'slime') {
       this.sprite.scaleY = 0.92 + Math.sin(now / 180 + this.phase) * 0.1;
       this.sprite.scaleX = 1.08 - Math.sin(now / 180 + this.phase) * 0.1;
+      if (player) this.tryHomingShot(player, 260, 2600, 150);
+    } else if (this.type === 'hopper' && player) {
+      this.tryHomingShot(player, 280, 2300, 175);
+    } else if (this.type === 'chaser' && player) {
+      this.tryHomingShot(player, 320, 2000, 195);
+    } else if (this.type === 'tank' && player) {
+      this.tryHomingShot(player, 380, 2800, 140);
     }
 
     this.syncHpBar();
+  }
+
+  /** Fire a homing hazard shot (blocked by terrain in GameScene). */
+  private tryHomingShot(player: Player, range: number, cooldownMs: number, speed: number): void {
+    if (!this.fireHazard || player.climbing) return;
+    this.spitCooldown -= 16;
+    if (this.spitCooldown > 0) return;
+    const dx = player.sprite.x - this.sprite.x;
+    const dy = player.sprite.y - this.sprite.y;
+    if (Math.hypot(dx, dy) > range) return;
+    const dir = dx >= 0 ? 1 : -1;
+    this.dir = dir;
+    this.fireHazard(this.sprite.x + dir * 14, this.sprite.y - 6, dir, {
+      homing: true,
+      speed,
+      vy: Phaser.Math.Clamp(dy * 0.35, -120, 120),
+    });
+    this.spitCooldown = cooldownMs;
+    this.sprite.setTint(0xffeaa7);
+    this.sprite.scene.time.delayedCall(90, () => {
+      if (!this.dead && this.sprite.active) this.sprite.clearTint();
+    });
   }
 
   /** Keep Arcade body glued to sprite after manual flight movement. */
@@ -322,6 +353,14 @@ export class Enemy {
     return this.takeWeaponHit(knockDir);
   }
 
+  /** Instant kill (missile / special skills). */
+  instantKill(): void {
+    if (this.dead || !this.sprite.active) return;
+    this.hitsLeft = 0;
+    this.refreshHpBar();
+    this.die();
+  }
+
   /** One-hit stomp kill — only for deliberate landings, never after gunfire. */
   stomp(): void {
     if (this.dead || !this.canBeStomped) return;
@@ -367,6 +406,7 @@ export class Enemy {
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
     this.wobbleTween?.stop();
+    this.onDied?.(this);
 
     const scene = this.sprite.scene;
     scene.tweens.add({

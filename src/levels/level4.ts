@@ -97,7 +97,7 @@ export const level4: LevelDef = {
     { x: 480, y: 280, value: 2 },
     { x: 420, y: 100, value: 3 },
   ],
-  pipe: { x: 500, y: 560 },
+  pipe: { x: 160, y: 860 },
   checkpoints: [
     { x: 420, y: 760 },
     { x: 140, y: 580 },

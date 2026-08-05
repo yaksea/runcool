@@ -6,6 +6,9 @@ export type SkinId = 'default' | 'sky' | 'mint' | 'grape' | 'sun';
 export type ShapeId = 'square' | 'round' | 'diamond' | 'triangle' | 'pill' | 'hex';
 export type SkillId = 'blink' | 'haste' | 'flight';
 export type EquippedSkill = SkillId | 'none';
+/** Independent from K-skills; used with N. */
+export type SpecialId = 'missile' | 'orbit';
+export type EquippedSpecial = SpecialId | 'none';
 
 export type SaveData = {
   version: 1;
@@ -19,6 +22,14 @@ export type SaveData = {
   equippedShape: ShapeId;
   ownedSkills: SkillId[];
   equippedSkill: EquippedSkill;
+  ownedSpecials: SpecialId[];
+  equippedSpecial: EquippedSpecial;
+  /** Missile cooldown upgrade level 0–8 (each level −0.5s cooldown). */
+  missileLevel: number;
+  /** Missile salvo upgrade level 0–8 (each level +0.5 missiles/shot, floored). */
+  missileSalvoLevel: number;
+  /** Orbit-missile storage upgrade 0–8 (capacity = 1 + level). */
+  orbitLevel: number;
   levels: Record<
     string,
     {
@@ -40,6 +51,7 @@ const ALL_WEAPONS: InventoryWeapon[] = ['glove', 'peashooter', 'hammer', 'fireba
 const ALL_SKINS: SkinId[] = ['default', 'sky', 'mint', 'grape', 'sun'];
 const ALL_SHAPES: ShapeId[] = ['square', 'round', 'diamond', 'triangle', 'pill', 'hex'];
 const ALL_SKILLS: SkillId[] = ['blink', 'haste', 'flight'];
+const ALL_SPECIALS: SpecialId[] = ['missile', 'orbit'];
 
 function defaultSave(): SaveData {
   return {
@@ -54,9 +66,33 @@ function defaultSave(): SaveData {
     equippedShape: 'square',
     ownedSkills: [],
     equippedSkill: 'none',
+    ownedSpecials: [],
+    equippedSpecial: 'none',
+    missileLevel: 0,
+    missileSalvoLevel: 0,
+    orbitLevel: 0,
     levels: {},
     activeRun: null,
   };
+}
+
+const MISSILE_LEVEL_CAP = 8;
+const MISSILE_SALVO_LEVEL_CAP = 8;
+const ORBIT_LEVEL_CAP = 8;
+
+function normalizeMissileLevel(v: unknown): number {
+  const n = Math.floor(Number(v) || 0);
+  return Math.max(0, Math.min(MISSILE_LEVEL_CAP, n));
+}
+
+function normalizeMissileSalvoLevel(v: unknown): number {
+  const n = Math.floor(Number(v) || 0);
+  return Math.max(0, Math.min(MISSILE_SALVO_LEVEL_CAP, n));
+}
+
+function normalizeOrbitLevel(v: unknown): number {
+  const n = Math.floor(Number(v) || 0);
+  return Math.max(0, Math.min(ORBIT_LEVEL_CAP, n));
 }
 
 function normalizeWeapon(w: unknown): WeaponType {
@@ -123,6 +159,23 @@ function normalizeEquippedSkill(w: unknown, owned: SkillId[]): EquippedSkill {
   return 'none';
 }
 
+function normalizeSpecials(list: unknown): SpecialId[] {
+  if (!Array.isArray(list)) return [];
+  const out: SpecialId[] = [];
+  for (const item of list) {
+    if (ALL_SPECIALS.includes(item as SpecialId) && !out.includes(item as SpecialId)) {
+      out.push(item as SpecialId);
+    }
+  }
+  return out;
+}
+
+function normalizeEquippedSpecial(w: unknown, owned: SpecialId[]): EquippedSpecial {
+  if (w === 'none' || w == null) return 'none';
+  if (ALL_SPECIALS.includes(w as SpecialId) && owned.includes(w as SpecialId)) return w as SpecialId;
+  return 'none';
+}
+
 export const SaveSystem = {
   load(): SaveData {
     try {
@@ -133,6 +186,7 @@ export const SaveSystem = {
       const ownedSkins = normalizeSkins(data.ownedSkins);
       const ownedShapes = normalizeShapes(data.ownedShapes);
       const ownedSkills = normalizeSkills(data.ownedSkills);
+      const ownedSpecials = normalizeSpecials(data.ownedSpecials);
       const merged: SaveData = {
         ...defaultSave(),
         ...data,
@@ -146,6 +200,17 @@ export const SaveSystem = {
         equippedShape: normalizeShape(data.equippedShape, ownedShapes),
         ownedSkills,
         equippedSkill: normalizeEquippedSkill(data.equippedSkill, ownedSkills),
+        ownedSpecials,
+        equippedSpecial: normalizeEquippedSpecial(data.equippedSpecial, ownedSpecials),
+        missileLevel: ownedSpecials.includes('missile')
+          ? normalizeMissileLevel(data.missileLevel)
+          : 0,
+        missileSalvoLevel: ownedSpecials.includes('missile')
+          ? normalizeMissileSalvoLevel(data.missileSalvoLevel)
+          : 0,
+        orbitLevel: ownedSpecials.includes('orbit')
+          ? normalizeOrbitLevel(data.orbitLevel)
+          : 0,
       };
       if (merged.activeRun) {
         merged.activeRun.weapon = normalizeWeapon(merged.activeRun.weapon);
@@ -258,6 +323,77 @@ export const SaveSystem = {
     data.equippedSkill = id;
     this.save(data);
     return data;
+  },
+
+  buySpecial(id: SpecialId, price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (data.ownedSpecials.includes(id)) {
+      data.equippedSpecial = id;
+      this.save(data);
+      return { ok: true, data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.ownedSpecials.push(id);
+    data.equippedSpecial = id;
+    this.save(data);
+    return { ok: true, data };
+  },
+
+  equipSpecial(id: EquippedSpecial): SaveData {
+    const data = this.load();
+    if (id !== 'none' && !data.ownedSpecials.includes(id)) return data;
+    data.equippedSpecial = id;
+    this.save(data);
+    return data;
+  },
+
+  /** Upgrade missile cooldown one level. Costs `price` coins. */
+  upgradeMissile(price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (!data.ownedSpecials.includes('missile')) {
+      return { ok: false, reason: 'owned', data };
+    }
+    if (data.missileLevel >= MISSILE_LEVEL_CAP) {
+      return { ok: false, reason: 'max', data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.missileLevel += 1;
+    this.save(data);
+    return { ok: true, data };
+  },
+
+  /** Upgrade missile salvo one level (+0.5 missiles/shot). Costs `price` coins. */
+  upgradeMissileSalvo(price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (!data.ownedSpecials.includes('missile')) {
+      return { ok: false, reason: 'owned', data };
+    }
+    if (data.missileSalvoLevel >= MISSILE_SALVO_LEVEL_CAP) {
+      return { ok: false, reason: 'max', data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.missileSalvoLevel += 1;
+    this.save(data);
+    return { ok: true, data };
+  },
+
+  /** Upgrade orbit-missile storage one level (+1 capacity). Costs `price` coins. */
+  upgradeOrbit(price: number): { ok: boolean; reason?: string; data: SaveData } {
+    const data = this.load();
+    if (!data.ownedSpecials.includes('orbit')) {
+      return { ok: false, reason: 'owned', data };
+    }
+    if (data.orbitLevel >= ORBIT_LEVEL_CAP) {
+      return { ok: false, reason: 'max', data };
+    }
+    if (data.coins < price) return { ok: false, reason: 'coins', data };
+    data.coins -= price;
+    data.orbitLevel += 1;
+    this.save(data);
+    return { ok: true, data };
   },
 
   collectWeapon(weapon: InventoryWeapon): SaveData {

@@ -20,6 +20,7 @@ export class UIScene extends Phaser.Scene {
   private armorPips: Phaser.GameObjects.Image[] = [];
   private weaponText!: Phaser.GameObjects.Text;
   private skillText!: Phaser.GameObjects.Text;
+  private specialText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private interactHintText!: Phaser.GameObjects.Text;
   private pauseLayer?: Phaser.GameObjects.Container;
@@ -58,8 +59,12 @@ export class UIScene extends Phaser.Scene {
       .text(16, 228, `${ZH.skill}: ${ZH.skillNone}`, style)
       .setScrollFactor(0)
       .setDepth(100);
+    this.specialText = this.add
+      .text(16, 264, `${ZH.special}: ${ZH.specialNone}`, style)
+      .setScrollFactor(0)
+      .setDepth(100);
     this.add
-      .text(16, 264, `${ZH.bag}: B · K`, style)
+      .text(16, 300, `${ZH.bag}: B · K · N`, style)
       .setScrollFactor(0)
       .setDepth(100);
 
@@ -105,6 +110,8 @@ export class UIScene extends Phaser.Scene {
         weaponLabel: string;
         skillLabel: string;
         skillCdMs: number;
+        specialLabel: string;
+        specialCdMs: number;
       }) => {
         this.timeText.setText(`${ZH.time}: ${(payload.timeMs / 1000).toFixed(1)}s`);
         this.deathText.setText(`${ZH.deaths}: ${payload.deaths}`);
@@ -113,6 +120,9 @@ export class UIScene extends Phaser.Scene {
         this.weaponText.setText(`${ZH.weapon}: ${payload.weaponLabel}`);
         const cd = payload.skillCdMs > 0 ? ` (${(payload.skillCdMs / 1000).toFixed(1)}s)` : '';
         this.skillText.setText(`${ZH.skill}: ${payload.skillLabel}${cd}`);
+        const scd =
+          payload.specialCdMs > 0 ? ` (${(payload.specialCdMs / 1000).toFixed(1)}s)` : '';
+        this.specialText.setText(`${ZH.special}: ${payload.specialLabel}${scd}`);
       },
     );
     game.events.on('toast', (msg: string) => this.showToast(msg));

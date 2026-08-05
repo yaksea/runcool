@@ -1,14 +1,32 @@
 import Phaser from 'phaser';
-import { ZH, shapeLabel, skinLabel, skillDesc, skillLabel } from '../i18n/zh';
+import { ZH, shapeLabel, skinLabel, skillDesc, skillLabel, specialDesc, specialLabel } from '../i18n/zh';
 import { THEME } from '../style/theme';
 import { LEVELS } from '../levels';
-import { SHAPES, SKILLS, SKINS, shapeById, skinById } from '../game/shopCatalog';
+import {
+  MISSILE_MAX_LEVEL,
+  MISSILE_SALVO_MAX_LEVEL,
+  MISSILE_SALVO_UPGRADE_PRICE,
+  MISSILE_UPGRADE_PRICE,
+  ORBIT_MAX_LEVEL,
+  ORBIT_UPGRADE_PRICE,
+  SHAPES,
+  SKILLS,
+  SKINS,
+  SPECIALS,
+  missileCooldownMs,
+  missileSalvoCount,
+  orbitCapacity,
+  shapeById,
+  skinById,
+} from '../game/shopCatalog';
 import {
   SaveSystem,
   type EquippedSkill,
+  type EquippedSpecial,
   type ShapeId,
   type SkinId,
   type SkillId,
+  type SpecialId,
 } from '../systems/SaveSystem';
 import { SoundSystem } from '../systems/SoundSystem';
 
@@ -388,9 +406,9 @@ export class MenuScene extends Phaser.Scene {
     SKILLS.forEach((skill, i) => {
       const owned = save.ownedSkills.includes(skill.id);
       const equipped = save.equippedSkill === skill.id;
-      const y = 168 + i * 70;
+      const y = 158 + i * 58;
       const name = this.add
-        .text(520, y - 10, `${skillLabel(skill.id)} · ${skill.price}`, {
+        .text(520, y - 8, `${skillLabel(skill.id)} · ${skill.price}`, {
           fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
           fontSize: '13px',
           color: '#1f2d3d',
@@ -428,7 +446,188 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
-    this.makeButton(width / 2, 510, ZH.back, () => {
+    // —— 特殊技能（N，可与 K 技能同时装备）——
+    const specialTitle = this.add.text(520, 318, ZH.shopSpecials, {
+      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+      fontSize: '14px',
+      color: '#1f2d3d',
+      fontStyle: 'bold',
+    });
+    this.tag(specialTitle);
+
+    {
+      const y = 342;
+      if (save.equippedSpecial === 'none') {
+        const t = this.add
+          .text(width - 70, y, ZH.equipped, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#27ae60',
+          })
+          .setOrigin(0.5);
+        this.tag(
+          this.add
+            .text(520, y, ZH.specialNone, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '13px',
+              color: '#1f2d3d',
+            })
+            .setOrigin(0, 0.5),
+        );
+        this.tag(t);
+      } else {
+        this.tag(
+          this.add
+            .text(520, y, ZH.specialNone, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '13px',
+              color: '#1f2d3d',
+            })
+            .setOrigin(0, 0.5),
+        );
+        this.makeButton(width - 70, y, ZH.unequip, () => this.onEquipSpecial('none'), 96, 30);
+      }
+    }
+
+    SPECIALS.forEach((spec, i) => {
+      const owned = save.ownedSpecials.includes(spec.id);
+      const equipped = save.equippedSpecial === spec.id;
+      const y = 372 + i * 72;
+      let title = `${specialLabel(spec.id)} · ${spec.price}`;
+      if (owned && spec.id === 'missile') {
+        title = `${specialLabel(spec.id)} · CD${save.missileLevel}/${MISSILE_MAX_LEVEL} · 齐射${save.missileSalvoLevel}/${MISSILE_SALVO_MAX_LEVEL}`;
+      } else if (owned && spec.id === 'orbit') {
+        title = `${specialLabel(spec.id)} · 存${save.orbitLevel}/${ORBIT_MAX_LEVEL}`;
+      }
+      this.tag(
+        this.add
+          .text(520, y - 14, title, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#1f2d3d',
+          })
+          .setOrigin(0, 0.5),
+      );
+      let detail = specialDesc(spec.id);
+      if (owned && spec.id === 'missile') {
+        detail = ZH.specialMissileLv(
+          save.missileLevel,
+          MISSILE_MAX_LEVEL,
+          (missileCooldownMs(save.missileLevel) / 1000).toFixed(1),
+          save.missileSalvoLevel,
+          MISSILE_SALVO_MAX_LEVEL,
+          missileSalvoCount(save.missileSalvoLevel),
+        );
+      } else if (owned && spec.id === 'orbit') {
+        detail = ZH.specialOrbitLv(
+          save.orbitLevel,
+          ORBIT_MAX_LEVEL,
+          orbitCapacity(save.orbitLevel),
+        );
+      }
+      this.tag(
+        this.add
+          .text(520, y + 4, detail, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '10px',
+            color: '#566573',
+          })
+          .setOrigin(0, 0.5),
+      );
+
+      if (!owned) {
+        this.makeButton(
+          width - 70,
+          y,
+          `${ZH.buy} ${spec.price}`,
+          () => this.onBuySpecial(spec.id, spec.price),
+          96,
+          28,
+        );
+        return;
+      }
+
+      if (equipped) {
+        this.tag(
+          this.add
+            .text(width - 70, y - 16, ZH.equipped, {
+              fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+              fontSize: '12px',
+              color: '#27ae60',
+            })
+            .setOrigin(0.5),
+        );
+      } else {
+        this.makeButton(width - 70, y - 16, '装备', () => this.onEquipSpecial(spec.id), 96, 26);
+      }
+
+      if (spec.id === 'missile') {
+        if (save.missileLevel >= MISSILE_MAX_LEVEL) {
+          this.tag(
+            this.add
+              .text(width - 170, y + 14, ZH.specialMaxLevel, {
+                fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+                fontSize: '11px',
+                color: '#27ae60',
+              })
+              .setOrigin(0.5),
+          );
+        } else {
+          this.makeButton(
+            width - 170,
+            y + 14,
+            ZH.specialUpgradeCd(MISSILE_UPGRADE_PRICE),
+            () => this.onUpgradeMissile(),
+            88,
+            24,
+          );
+        }
+
+        if (save.missileSalvoLevel >= MISSILE_SALVO_MAX_LEVEL) {
+          this.tag(
+            this.add
+              .text(width - 70, y + 14, ZH.specialMaxLevel, {
+                fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+                fontSize: '11px',
+                color: '#27ae60',
+              })
+              .setOrigin(0.5),
+          );
+        } else {
+          this.makeButton(
+            width - 70,
+            y + 14,
+            ZH.specialUpgradeSalvo(MISSILE_SALVO_UPGRADE_PRICE),
+            () => this.onUpgradeMissileSalvo(),
+            88,
+            24,
+          );
+        }
+      } else if (spec.id === 'orbit') {
+        if (save.orbitLevel >= ORBIT_MAX_LEVEL) {
+          this.tag(
+            this.add
+              .text(width - 70, y + 14, ZH.specialMaxLevel, {
+                fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+                fontSize: '11px',
+                color: '#27ae60',
+              })
+              .setOrigin(0.5),
+          );
+        } else {
+          this.makeButton(
+            width - 70,
+            y + 14,
+            ZH.specialUpgradeOrbit(ORBIT_UPGRADE_PRICE),
+            () => this.onUpgradeOrbit(),
+            88,
+            24,
+          );
+        }
+      }
+    });
+
+    this.makeButton(width / 2, 520, ZH.back, () => {
       this.mode = 'main';
       this.shopMsg = '';
       this.renderMain();
@@ -468,6 +667,60 @@ export class MenuScene extends Phaser.Scene {
   private onEquipSkill(id: EquippedSkill): void {
     SaveSystem.equipSkill(id);
     this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onBuySpecial(id: SpecialId, price: number): void {
+    const result = SaveSystem.buySpecial(id, price);
+    this.shopMsg = result.ok ? '' : ZH.notEnoughCoins;
+    this.renderShop();
+  }
+
+  private onEquipSpecial(id: EquippedSpecial): void {
+    SaveSystem.equipSpecial(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onUpgradeMissile(): void {
+    const result = SaveSystem.upgradeMissile(MISSILE_UPGRADE_PRICE);
+    if (result.ok) {
+      this.shopMsg = '';
+    } else if (result.reason === 'coins') {
+      this.shopMsg = ZH.notEnoughCoins;
+    } else if (result.reason === 'max') {
+      this.shopMsg = ZH.specialMaxLevel;
+    } else {
+      this.shopMsg = '';
+    }
+    this.renderShop();
+  }
+
+  private onUpgradeMissileSalvo(): void {
+    const result = SaveSystem.upgradeMissileSalvo(MISSILE_SALVO_UPGRADE_PRICE);
+    if (result.ok) {
+      this.shopMsg = '';
+    } else if (result.reason === 'coins') {
+      this.shopMsg = ZH.notEnoughCoins;
+    } else if (result.reason === 'max') {
+      this.shopMsg = ZH.specialMaxLevel;
+    } else {
+      this.shopMsg = '';
+    }
+    this.renderShop();
+  }
+
+  private onUpgradeOrbit(): void {
+    const result = SaveSystem.upgradeOrbit(ORBIT_UPGRADE_PRICE);
+    if (result.ok) {
+      this.shopMsg = '';
+    } else if (result.reason === 'coins') {
+      this.shopMsg = ZH.notEnoughCoins;
+    } else if (result.reason === 'max') {
+      this.shopMsg = ZH.specialMaxLevel;
+    } else {
+      this.shopMsg = '';
+    }
     this.renderShop();
   }
 

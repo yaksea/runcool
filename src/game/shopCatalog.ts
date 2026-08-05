@@ -1,6 +1,6 @@
-import type { ShapeId, SkinId, SkillId } from '../systems/SaveSystem';
+import type { ShapeId, SkinId, SkillId, SpecialId } from '../systems/SaveSystem';
 
-export type { ShapeId, SkinId, SkillId };
+export type { ShapeId, SkinId, SkillId, SpecialId };
 
 /** Color (tint) — independent of shape. */
 export type SkinDef = {
@@ -47,6 +47,35 @@ export const SKILLS: SkillDef[] = [
   { id: 'flight', price: 22, cooldownMs: 5000, durationMs: 2600 },
 ];
 
+export type SpecialDef = {
+  id: SpecialId;
+  price: number;
+  /** Base cooldown before upgrades. */
+  cooldownMs: number;
+};
+
+/** Independent special skills (N key), can equip alongside K skills. */
+export const SPECIALS: SpecialDef[] = [
+  { id: 'missile', price: 50, cooldownMs: 4500 },
+  { id: 'orbit', price: 100, cooldownMs: 0 },
+];
+
+export const MISSILE_MAX_LEVEL = 8;
+export const MISSILE_UPGRADE_PRICE = 10;
+/** Cooldown reduction per upgrade level. */
+export const MISSILE_CD_REDUCE_MS = 500;
+
+/** Salvo upgrade: +0.5 missiles/shot per level (floored). */
+export const MISSILE_SALVO_MAX_LEVEL = 8;
+export const MISSILE_SALVO_UPGRADE_PRICE = 20;
+export const MISSILE_SALVO_PER_LEVEL = 0.5;
+
+/** Orbit missile: storage upgrade (+1 capacity / level). */
+export const ORBIT_MAX_LEVEL = 8;
+export const ORBIT_UPGRADE_PRICE = 50;
+/** Engage range while orbiting (px). */
+export const ORBIT_ENGAGE_RANGE = 300;
+
 export function skinById(id: SkinId): SkinDef {
   return SKINS.find((s) => s.id === id) ?? SKINS[0];
 }
@@ -57,4 +86,31 @@ export function shapeById(id: ShapeId): ShapeDef {
 
 export function skillById(id: SkillId): SkillDef | undefined {
   return SKILLS.find((s) => s.id === id);
+}
+
+export function specialById(id: SpecialId): SpecialDef | undefined {
+  return SPECIALS.find((s) => s.id === id);
+}
+
+/** Missile cooldown after upgrades (min floor 500ms). */
+export function missileCooldownMs(level: number): number {
+  const def = specialById('missile');
+  const base = def?.cooldownMs ?? 4500;
+  const lv = Math.max(0, Math.min(MISSILE_MAX_LEVEL, Math.floor(level)));
+  return Math.max(500, base - lv * MISSILE_CD_REDUCE_MS);
+}
+
+/**
+ * Missiles fired per N-press.
+ * Base 1 + 0.5 per salvo level, floored (Lv1→1, Lv2→2, …, Lv8→5).
+ */
+export function missileSalvoCount(salvoLevel: number): number {
+  const lv = Math.max(0, Math.min(MISSILE_SALVO_MAX_LEVEL, Math.floor(salvoLevel)));
+  return Math.max(1, Math.floor(1 + lv * MISSILE_SALVO_PER_LEVEL));
+}
+
+/** Orbit storage capacity: 1 at unlock, +1 per upgrade level. */
+export function orbitCapacity(orbitLevel: number): number {
+  const lv = Math.max(0, Math.min(ORBIT_MAX_LEVEL, Math.floor(orbitLevel)));
+  return 1 + lv;
 }

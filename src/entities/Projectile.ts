@@ -24,6 +24,8 @@ export function fireProjectile(
     speed: number;
     /** When true, hitting an enemy removes exactly 1 hit point. */
     dealsHit?: boolean;
+    /** Steer toward the player each frame (still blocked by terrain). */
+    homing?: boolean;
     scale?: number;
     vy?: number;
     lifeMs?: number;
@@ -33,6 +35,8 @@ export function fireProjectile(
   sprite.setDepth(9);
   sprite.setData('spent', false);
   sprite.setData('dealsHit', opts.dealsHit === true);
+  sprite.setData('homing', opts.homing === true);
+  sprite.setData('homingSpeed', opts.speed);
   sprite.setData('prevX', opts.x);
   sprite.setData('prevY', opts.y);
   if (opts.scale) sprite.setScale(opts.scale);
@@ -40,7 +44,7 @@ export function fireProjectile(
   body.setAllowGravity(false);
   // Elongate along travel so fast shots don't tunnel through small flyers.
   const vx = opts.dir * opts.speed;
-  const vy = opts.vy ?? 0;
+  const vy = opts.vy ?? (opts.homing ? -40 : 0);
   const horizontal = Math.abs(vx) >= Math.abs(vy);
   if (horizontal) {
     body.setSize(22, 14);
@@ -48,6 +52,7 @@ export function fireProjectile(
     body.setSize(14, 22);
   }
   sprite.setVelocity(vx, vy);
+  if (opts.homing) sprite.setRotation(Math.atan2(vy, vx));
 
   scene.time.delayedCall(opts.lifeMs ?? 1800, () => retirePhysicsSprite(sprite));
   return sprite;

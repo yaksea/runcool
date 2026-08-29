@@ -87,14 +87,10 @@ export const level6: LevelDef = {
     { x: 2213, y: 400, count: 3 },
     { x: 1287, y: 320, count: 3 },
   ],
-        flameVents: [
+  flameVents: [
     { x: 1313, y: 200, intervalMs: 700, height: 145 },
     { x: 1920, y: 440, intervalMs: 650, height: 150 },
     { x: 2193, y: 260, intervalMs: 700, height: 130 },
-    { x: 465, y: 560, intervalMs: 750, height: 135 },
-  ],
-        acidPools: [
-    { x: 355, y: 560, w: 84 },
   ],
   geysers: [
     { x: 618, y: 520, intervalMs: 1600, force: 720 },

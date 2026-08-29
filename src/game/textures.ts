@@ -679,19 +679,20 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.fillCircle(50, 13, 1.5);
   }, 72, 24);
 
-  ensure(scene, 'toxic_zone', (g) => {
-    g.fillStyle(0x6c3483, 0.92);
-    g.fillEllipse(40, 18, 76, 28);
-    g.fillStyle(0x9b59b6, 0.9);
-    g.fillEllipse(40, 16, 58, 18);
-    g.fillStyle(0xd2b4de, 0.7);
-    g.fillEllipse(30, 13, 16, 7);
-    g.fillEllipse(52, 15, 12, 6);
-    g.fillStyle(0x58d68d, 0.65);
-    g.fillCircle(24, 14, 2.2);
-    g.fillCircle(56, 16, 1.8);
-    g.fillCircle(40, 12, 1.6);
-  }, 80, 32);
+  // Soft lilac wash — meant to be drawn with ADD + low alpha in-world.
+  replace(scene, 'toxic_zone', (g) => {
+    g.fillStyle(0xc39bd3, 0.35);
+    g.fillEllipse(48, 22, 88, 34);
+    g.fillStyle(0xd7bde2, 0.28);
+    g.fillEllipse(48, 20, 62, 22);
+    g.fillStyle(0xa9dfbf, 0.22);
+    g.fillEllipse(34, 18, 22, 10);
+    g.fillEllipse(62, 20, 18, 9);
+    g.fillStyle(0xffffff, 0.18);
+    g.fillEllipse(40, 16, 12, 5);
+    g.fillCircle(58, 17, 2);
+    g.fillCircle(30, 19, 1.5);
+  }, 96, 40);
 
   ensure(scene, 'timed_platform', (g) => {
     g.fillStyle(0x5dade2, 1);
@@ -844,6 +845,18 @@ export function generateTextures(scene: Phaser.Scene): void {
     g.lineBetween(6, 16, 10, 18);
     g.lineBetween(22, 18, 26, 16);
   }, 32, 32);
+
+  replace(scene, 'snowball', (g) => {
+    // Fill nearly the whole canvas so displaySize maps 1:1 to visible ball.
+    g.fillStyle(0xd6eaf8, 1);
+    g.fillCircle(12, 12, 11.5);
+    g.fillStyle(0xffffff, 0.95);
+    g.fillCircle(12, 12, 9);
+    g.fillStyle(0xaed6f1, 0.85);
+    g.fillCircle(8, 8, 2.4);
+    g.fillStyle(0xffffff, 0.7);
+    g.fillCircle(9, 7, 1.2);
+  }, 24, 24);
 
   replace(scene, 'pet_fish', (g) => {
     // Simple silhouette: blue body outline + one eye. No scales/fins clutter.

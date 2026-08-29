@@ -87,20 +87,15 @@ export const level11: LevelDef = {
     { x: 2153, y: 320, count: 3 },
     { x: 587, y: 660, count: 3 },
   ],
-      flameVents: [
+  flameVents: [
     { x: 2727, y: 300, intervalMs: 650, height: 145 },
     { x: 2107, y: 520, intervalMs: 750, height: 130 },
-    { x: 2940, y: 240, intervalMs: 650, height: 135 },
   ],
-      levers: [
+  levers: [
     { x: 170, y: 700, targetId: 'gate11', targetType: 'gate' },
     { x: 1850, y: 140, targetId: 'cv11a', targetType: 'conveyor' },
     { x: 1253, y: 600, targetId: 'cv11b', targetType: 'conveyor' },
     { x: 1110, y: 360, targetId: 'fan11', targetType: 'fan' },
-  ],
-      acidPools: [
-    { x: 3060, y: 240, w: 84 },
-    { x: 3180, y: 240, w: 88 },
   ],
   pads: [
     { x: 2780, y: 260 },

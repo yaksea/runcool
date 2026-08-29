@@ -80,19 +80,17 @@ export const level8: LevelDef = {
     { id: 'p8c', x: 300, y: 520, pairId: 'p8d' },
     { id: 'p8d', x: 1600, y: 720, pairId: 'p8c' },
   ],
-        geysers: [
-    { x: 55, y: 240, intervalMs: 1200, force: 820 },
+  geysers: [
     { x: 1567, y: 800, intervalMs: 1400, force: 780 },
   ],
-        flameVents: [
+  flameVents: [
     { x: 550, y: 240, intervalMs: 750, height: 130 },
     { x: 847, y: 180, intervalMs: 650, height: 150 },
     { x: 2713, y: 180, intervalMs: 700, height: 140 },
     { x: 1813, y: 340, intervalMs: 650, height: 155 },
   ],
-        acidPools: [
+  acidPools: [
     { x: 373, y: 280, w: 86 },
-    { x: 165, y: 240, w: 90 },
     { x: 1010, y: 780, w: 80 },
   ],
   timedPlatforms: [

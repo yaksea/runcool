@@ -86,17 +86,12 @@ export const level7: LevelDef = {
     { x: 1228, y: 500, w: 90, h: 22 },
   ],
     
-      spikes: [
+  spikes: [
     { x: 347, y: 340, count: 3 },
-    { x: 133, y: 280, count: 4 },
     { x: 2007, y: 220, count: 4 },
     { x: 2190, y: 340, count: 3 },
     { x: 2840, y: 400, count: 3 },
   ],
-      flameVents: [
-    { x: 67, y: 280, intervalMs: 700, height: 150 },
-  ],
-  
   pads: [
     { x: 1220, y: 476 },
     { x: 1680, y: 256 },

@@ -133,8 +133,6 @@ export const levelTutorial: LevelDef = {
   breakables: [{ x: 3380, y: 540, w: 56, h: 56, hits: 1 }],
 
   spikes: [
-    { x: 360, y: 600, count: 4 },
-    { x: 480, y: 600, count: 3 },
     // 4.4 尖刺格（地面；上层留给喷火口）
     { x: 4280, y: 600, count: 5 },
     { x: 4400, y: 600, count: 4 },

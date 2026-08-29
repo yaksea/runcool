@@ -98,15 +98,13 @@ export const level12: LevelDef = {
     { x: 2013, y: 880, count: 4 },
     { x: 1643, y: 200, count: 3 },
   ],
-      acidPools: [
+  acidPools: [
     { x: 2540, y: 700, w: 90 },
     { x: 2353, y: 900, w: 88 },
-    { x: 112, y: 180, w: 80 },
   ],
-      flameVents: [
+  flameVents: [
     { x: 500, y: 480, intervalMs: 650, height: 145 },
     { x: 387, y: 620, intervalMs: 700, height: 140 },
-    { x: 224, y: 180, intervalMs: 650, height: 135 },
     { x: 2964, y: 820, intervalMs: 750, height: 130 },
   ],
   pads: [

@@ -63,7 +63,8 @@ export class GameScene extends Phaser.Scene {
   private pads!: Phaser.Physics.Arcade.StaticGroup;
   private finish!: Phaser.Physics.Arcade.Sprite;
   private enemies: Enemy[] = [];
-  private pet: PetCompanion | null = null;
+  private pets: PetCompanion[] = [];
+  private menuPet: PetCompanion | null = null;
   private petMenuOpen = false;
   /** Overworld spawn points: death→respawn, alive→reinforce, every 30s. */
   private spawnPoints: {
@@ -88,6 +89,8 @@ export class GameScene extends Phaser.Scene {
   /** Vitals snapshot taken on pipe enter; restored on exit. */
   private pipeSavedVitals = { hp: 3, armor: 3 };
   private arenaOrigin = { x: 0, y: 0 };
+  /** Solid walkable slabs inside the pipe arena (for snowman summon placement). */
+  private arenaFloors: { x: number; y: number; w: number; h: number }[] = [];
   private arenaVeil?: Phaser.GameObjects.Rectangle;
   private overworldBounds = { w: 0, h: 0 };
 
@@ -102,6 +105,7 @@ export class GameScene extends Phaser.Scene {
   private keyM!: Phaser.Input.Keyboard.Key;
   private keyN!: Phaser.Input.Keyboard.Key;
   private keyL!: Phaser.Input.Keyboard.Key;
+  private keyC!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
   private keyB!: Phaser.Input.Keyboard.Key;
   private keyX!: Phaser.Input.Keyboard.Key;
@@ -172,8 +176,7 @@ export class GameScene extends Phaser.Scene {
     this.level = level;
     this.enemies = [];
     this.spawnPoints = [];
-    this.pet?.destroy();
-    this.pet = null;
+    this.destroyPets();
     this.tutorialZones = [];
     this.lastTutorialZoneId = null;
     this.tutorialAssistOn = SaveSystem.load().tutorialAssist !== false;
@@ -198,6 +201,7 @@ export class GameScene extends Phaser.Scene {
     this.pipeSprite = undefined;
     this.pipeState = 'available';
     this.arenaEnemies = [];
+    this.arenaFloors = [];
     this.arenaVeil = undefined;
     this.runActive = true;
     this.paused = false;
@@ -357,8 +361,7 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.events.off(Phaser.Scenes.Events.PRE_UPDATE, this.preUpdateGunStompGuard, this);
       this.events.off(Phaser.Scenes.Events.POST_UPDATE, this.postUpdateSeesaws, this);
-      this.pet?.destroy();
-      this.pet = null;
+      this.destroyPets();
     });
 
     if (this.scene.isActive('UIScene') || this.scene.isSleeping('UIScene')) {
@@ -375,7 +378,7 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(200, () => this.events.emit('toast', ZH.tutorialWelcome));
       this.events.emit('tutorialAssistState', this.tutorialAssistOn);
     } else if (this.level.index === 1 && this.checkpointIndex < 0) {
-      this.time.delayedCall(200, () => this.events.emit('toast', ZH.controls));
+      this.time.delayedCall(200, () => this.events.emit('toast', ZH.controlsShort));
     }
   }
 
@@ -424,6 +427,9 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.keyL)) {
       this.tryUseNuke();
     }
+    if (Phaser.Input.Keyboard.JustDown(this.keyC)) {
+      this.tryToggleSnowmanArmy();
+    }
     if (this.keyN.isDown) {
       if (SaveSystem.isSpecialEquipped('orbit')) {
         this.tryUseOrbit(true);
@@ -439,10 +445,12 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('interactHint', hint?.hint ?? '');
 
     this.enemies.forEach((e) => e.update(this.player));
-    this.pet?.update(this.player, this.enemies, delta, (amount) => {
-      SaveSystem.addCoins(amount);
-      this.events.emit('hud', this.getHudPayload());
-    });
+    for (const pet of this.pets) {
+      pet.update(this.player, this.enemies, delta, (amount) => {
+        SaveSystem.addCoins(amount);
+        this.events.emit('hud', this.getHudPayload());
+      });
+    }
     this.updateSpawnPoints();
     this.updateTutorialAssist();
     this.player.tickVitals(delta);
@@ -465,8 +473,11 @@ export class GameScene extends Phaser.Scene {
     for (const pool of this.acidPools) {
       if (pool.update(this.player, this.enemies)) this.hurtPlayer();
     }
-    for (const zone of this.toxicZones) {
-      zone.update(this.enemies, delta);
+    if (this.toxicZones.length > 0) {
+      for (const zone of this.toxicZones) {
+        zone.update(this.enemies, delta);
+      }
+      this.toxicZones = this.toxicZones.filter((z) => z.alive);
     }
     this.timedPlatforms.forEach((t) => t.update());
     this.applyConveyors(delta);
@@ -502,6 +513,7 @@ export class GameScene extends Phaser.Scene {
     this.keyM = kb.addKey(Phaser.Input.Keyboard.KeyCodes.M);
     this.keyN = kb.addKey(Phaser.Input.Keyboard.KeyCodes.N);
     this.keyL = kb.addKey(Phaser.Input.Keyboard.KeyCodes.L);
+    this.keyC = kb.addKey(Phaser.Input.Keyboard.KeyCodes.C);
     this.keyP = kb.addKey(Phaser.Input.Keyboard.KeyCodes.P);
     this.keyB = kb.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.keyX = kb.addKey(Phaser.Input.Keyboard.KeyCodes.X);
@@ -1035,6 +1047,20 @@ export class GameScene extends Phaser.Scene {
     addWall(ox + aw - 300, floorY - 120, 180, 22, 0x6c3483);
     addWall(ox + aw / 2 + 40, floorY - 220, 180, 22, 0x6c3483);
 
+    // Walkable tops only (walls / ceiling excluded) for snowman army placement.
+    this.arenaFloors = [
+      { x: ox, y: floorY, w: aw, h: PIPE_ARENA.floorH },
+      {
+        x: ox + 48,
+        y: floorY - PIPE_ARENA.safePadGap,
+        w: PIPE_ARENA.safePadW,
+        h: PIPE_ARENA.safePadH,
+      },
+      { x: combatX + 40, y: floorY - 120, w: 180, h: 22 },
+      { x: ox + aw - 300, y: floorY - 120, w: 180, h: 22 },
+      { x: ox + aw / 2 + 40, y: floorY - 220, w: 180, h: 22 },
+    ];
+
     // Dim veil (camera-fixed) toggled when inside.
     this.arenaVeil = this.add
       .rectangle(THEME.width / 2, THEME.height / 2, THEME.width, THEME.height, 0x3b0a57, 0.28)
@@ -1090,11 +1116,11 @@ export class GameScene extends Phaser.Scene {
     this.player.restoreVitals();
     this.player.makeInvincible(this.time.now, PIPE_ENTER_INVINCIBLE_MS);
     this.portals?.suppress(PIPE_ENTER_INVINCIBLE_MS);
-    if (this.pet?.sprite.active) {
-      this.pet.sprite.setPosition(spawnX - 28, spawnY - 8);
-    }
+    this.repositionPets(spawnX, spawnY);
 
     this.spawnArenaEnemies();
+    // Pull full snowman army into the pipe on arena floors.
+    this.getSnowmanPet()?.relocateSnowmanArmy(this.enemies, this.player);
     this.events.emit('toast', ZH.pipeEnter(pipeArenaReward(this.level.index)));
     this.events.emit('hud', this.getHudPayload());
     return true;
@@ -1103,29 +1129,41 @@ export class GameScene extends Phaser.Scene {
   private spawnArenaEnemies(): void {
     this.clearArenaEnemies();
     const ox = this.arenaOrigin.x;
-    const floorY = this.arenaOrigin.y + PIPE_ARENA.height - PIPE_ARENA.floorH;
+    const oy = this.arenaOrigin.y;
+    const aw = PIPE_ARENA.width;
+    const floorY = oy + PIPE_ARENA.height - PIPE_ARENA.floorH;
     // Keep the left safe pad + clear zone empty — denser packing to the right.
     const spawnLeft = ox + 48 + PIPE_ARENA.safePadW + PIPE_ARENA.safeClear;
+    const spawnRight = ox + aw - 56;
+    const airTop = oy + 56;
+    const airBottom = floorY - 70;
+    const combatW = Math.max(80, spawnRight - spawnLeft);
     const packs = pipeArenaPack(this.level.index);
     const total = packs.reduce((sum, p) => sum + p.count, 0);
-    // Final 100-cap arena uses a tighter grid so everyone fits in the room.
-    const cols = total > 40 ? 16 : 10;
-    const xStep = total > 40 ? 46 : 62;
-    const flyRowGap = total > 40 ? 26 : 36;
+    // Fit everyone inside the room — large packs use a denser in-bounds grid.
+    const cols = Phaser.Math.Clamp(
+      Math.ceil(Math.sqrt(total * (combatW / Math.max(140, airBottom - airTop)))),
+      8,
+      28,
+    );
+    const xStep = combatW / cols;
+    const maxAirRows = Math.max(1, Math.floor((airBottom - airTop) / 28));
     let slot = 0;
     for (const pack of packs) {
       for (let i = 0; i < pack.count; i++) {
         const flying = pack.type === 'floater' || pack.type === 'bat' || pack.type === 'ghost';
         const col = slot % cols;
         const row = Math.floor(slot / cols);
-        const x = spawnLeft + col * xStep + (row % 2) * 12;
+        const x = spawnLeft + col * xStep + xStep * 0.5 + (row % 2) * Math.min(8, xStep * 0.15);
         const y = flying
-          ? floorY - 120 - row * flyRowGap
-          : floorY - 36 - (row % 2) * 14;
-        // Short patrol so they don't wander into the safe pad.
+          ? airTop + (row % maxAirRows) * ((airBottom - airTop) / maxAirRows)
+          : floorY - 36 - (row % 4) * 10;
+        // Hard clamp so authored spawn (and later recall) stays inside the arena.
+        const cx = Phaser.Math.Clamp(x, spawnLeft, spawnRight);
+        const cy = Phaser.Math.Clamp(y, oy + 40, floorY - 24);
         const enemy = new Enemy(
           this,
-          { type: pack.type, x, y, patrol: 36 + (slot % 3) * 10 },
+          { type: pack.type, x: cx, y: cy, patrol: 28 + (slot % 3) * 8 },
           (fx, fy, dir, opts) => this.fireEnemyHazard(fx, fy, dir, opts),
           PIPE_ARENA_HITS,
           (e) => this.dropEnemyCoins(e.sprite.x, e.sprite.y),
@@ -1160,12 +1198,15 @@ export class GameScene extends Phaser.Scene {
     // Yeeted out of the room → recall to spawn (does not count as a kill).
     this.recallArenaEnemiesOutOfBounds();
 
-    if (this.arenaEnemies.some((e) => !e.dead && e.sprite.active)) return;
+    // Sprite already destroyed counts as gone even if tween race left dead=false briefly.
+    const alive = this.arenaEnemies.some((e) => !e.dead && e.sprite.active);
+    if (alive) return;
 
     this.pipeState = 'done';
     const reward = pipeArenaReward(this.level.index);
     SaveSystem.addCoins(reward);
     this.events.emit('toast', ZH.pipeClear(reward));
+    this.clearArenaEnemies();
     this.sealPipe();
     this.exitPipeRealm(false);
     this.events.emit('hud', this.getHudPayload());
@@ -1178,10 +1219,20 @@ export class GameScene extends Phaser.Scene {
     const aw = PIPE_ARENA.width;
     const ah = PIPE_ARENA.height;
     const pad = 48;
+    const floorY = oy + ah - PIPE_ARENA.floorH;
+    const spawnLeft = ox + 48 + PIPE_ARENA.safePadW + PIPE_ARENA.safeClear;
+    const spawnRight = ox + aw - 56;
     for (const e of this.arenaEnemies) {
       if (e.dead || !e.sprite.active) continue;
       const { x, y } = e.sprite;
       if (x < ox - pad || x > ox + aw + pad || y < oy - pad || y > oy + ah + pad) {
+        // Prefer authored spawn; if that is somehow invalid, snap into the combat box.
+        const sx = Phaser.Math.Clamp(e.spawnDef.x, spawnLeft, spawnRight);
+        const sy = Phaser.Math.Clamp(e.spawnDef.y, oy + 48, floorY - 28);
+        if (sx !== e.spawnDef.x || sy !== e.spawnDef.y) {
+          e.spawnDef.x = sx;
+          e.spawnDef.y = sy;
+        }
         e.recallToSpawn();
       }
     }
@@ -1213,9 +1264,9 @@ export class GameScene extends Phaser.Scene {
     this.player.setVitals(this.pipeSavedVitals.hp, this.pipeSavedVitals.armor);
     this.player.makeInvincible(this.time.now, fromDeath ? 1200 : 800);
     this.portals?.suppress(1500);
-    if (this.pet?.sprite.active) {
-      this.pet.sprite.setPosition(x - 28, y - 8);
-    }
+    this.repositionPets(x, y);
+    // Resummon on overworld slabs if the army is still deployed.
+    this.getSnowmanPet()?.relocateSnowmanArmy(this.enemies, this.player);
     this.cameras.main.centerOn(x, y);
     this.events.emit('hud', this.getHudPayload());
   }
@@ -1239,16 +1290,72 @@ export class GameScene extends Phaser.Scene {
     this.player.setImmortal(save.equippedPassive === 'immortal');
   }
 
-  private spawnPet(): void {
-    this.pet?.destroy();
-    this.pet = null;
-    const save = SaveSystem.load();
-    if (save.equippedPet === 'none') return;
-    this.pet = new PetCompanion(this, save.equippedPet, this.player, () => this.openPetMenu());
+  private destroyPets(): void {
+    for (const pet of this.pets) pet.destroy();
+    this.pets = [];
+    this.menuPet = null;
   }
 
-  openPetMenu(): void {
-    if (!this.pet || this.dying || this.adOpen) return;
+  private getSnowmanPet(): PetCompanion | null {
+    return this.pets.find((p) => p.id === 'snowman') ?? null;
+  }
+
+  private repositionPets(playerX: number, playerY: number): void {
+    this.pets.forEach((pet, i) => {
+      if (!pet.sprite.active) return;
+      pet.sprite.setPosition(playerX - 28 - i * 22, playerY - 8);
+    });
+  }
+
+  private spawnPet(): void {
+    this.destroyPets();
+    const save = SaveSystem.load();
+    save.equippedPets.forEach((id, slot) => {
+      const pet = new PetCompanion(
+        this,
+        id,
+        this.player,
+        () => this.openPetMenu(pet),
+        (x, y) => this.platformRectAt(x, y),
+        () => this.listSummonFloors(),
+        slot,
+      );
+      this.pets.push(pet);
+    });
+  }
+
+  /** Current zone walkables for snowman army (pipe vs overworld). */
+  private listSummonFloors(): { x: number; y: number; w: number; h: number }[] {
+    if (this.pipeState === 'active') {
+      return this.arenaFloors.map((f) => ({ ...f }));
+    }
+    return [
+      ...this.level.platforms.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
+      ...(this.level.conveyors ?? []).map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
+    ];
+  }
+
+  /** Solid floor under a world point for pet summon placement. */
+  private platformRectAt(x: number, y: number): { x: number; y: number; w: number; h: number } | null {
+    const floors = this.listSummonFloors();
+    let best: { x: number; y: number; w: number; h: number } | null = null;
+    let bestScore = Infinity;
+    for (const f of floors) {
+      if (x < f.x - 8 || x > f.x + f.w + 8) continue;
+      const dy = y - f.y;
+      if (dy < -100 || dy > 56) continue;
+      const score = Math.abs(dy);
+      if (score < bestScore) {
+        bestScore = score;
+        best = f;
+      }
+    }
+    return best;
+  }
+
+  openPetMenu(pet?: PetCompanion): void {
+    const target = pet ?? this.pets[0];
+    if (!target || this.dying || this.adOpen) return;
     if (!this.runActive) return;
     if (this.inventoryOpen) {
       this.inventoryOpen = false;
@@ -1259,18 +1366,20 @@ export class GameScene extends Phaser.Scene {
       this.events.emit('pause', false);
     }
     if (this.petMenuOpen) return;
+    this.menuPet = target;
     this.petMenuOpen = true;
     this.physics.pause();
     this.events.emit('petMenu', {
       open: true,
-      petId: this.pet.id,
-      behavior: this.pet.behavior,
+      petId: target.id,
+      behavior: target.behavior,
+      escortActive: target.isSnowmanEscortActive(),
     });
   }
 
   setPetBehavior(mode: PetBehavior): void {
-    if (!this.pet) return;
-    this.pet.setBehavior(mode);
+    if (!this.menuPet) return;
+    this.menuPet.setBehavior(mode);
     const toast =
       mode === 'play'
         ? ZH.petModePlayToast
@@ -1281,35 +1390,66 @@ export class GameScene extends Phaser.Scene {
     this.closePetMenu();
   }
 
+  toggleSnowmanEscort(): void {
+    const snowman = this.menuPet?.id === 'snowman' ? this.menuPet : this.getSnowmanPet();
+    if (!snowman) return;
+    const result = snowman.toggleSnowmanEscort();
+    if (result === 'escort') {
+      snowman.relocateSnowmanArmy(this.enemies, this.player);
+      this.events.emit('toast', ZH.snowmanEscortOn);
+    } else if (result === 'recalled') {
+      this.events.emit('toast', ZH.snowmanEscortOff);
+    }
+    this.closePetMenu();
+  }
+
   closePetMenu(): void {
     if (!this.petMenuOpen) return;
     this.petMenuOpen = false;
+    this.menuPet = null;
     this.physics.resume();
     this.events.emit('petMenu', { open: false });
   }
 
   /** Overworld (non-pipe) enemy density vs authored level defs. */
   private static readonly OVERWORLD_ENEMY_MULT = 5;
-  /** Respawn / reinforce interval at each overworld spawn point. */
-  private static readonly SPAWN_REFRESH_MS = 30_000;
-  /** Soft cap of living monsters tied to one spawn point (primary + extras). */
-  private static readonly SPAWN_POINT_ALIVE_CAP = 6;
+  /** Hard: respawn / reinforce interval. */
+  private static readonly HARD_SPAWN_REFRESH_MS = 30_000;
+  /** Nightmare: respawn / reinforce interval. */
+  private static readonly NIGHTMARE_SPAWN_REFRESH_MS = 3_000;
+  /** Hard: soft cap of living monsters per spawn point. */
+  private static readonly HARD_SPAWN_ALIVE_CAP = 6;
+  /** Nightmare: soft cap of living monsters per spawn point. */
+  private static readonly NIGHTMARE_SPAWN_ALIVE_CAP = 10;
+  /** Active refresh / cap for the current run (set in spawnEnemies). */
+  private spawnRefreshMs = GameScene.HARD_SPAWN_REFRESH_MS;
+  private spawnAliveCap = GameScene.HARD_SPAWN_ALIVE_CAP;
 
   private spawnEnemies(): void {
     this.spawnPoints = [];
     const tutorial = isTutorialLevel(this.level);
+    const difficulty = SaveSystem.load().difficulty;
+    const easy = difficulty === 'easy';
+    if (difficulty === 'nightmare') {
+      this.spawnRefreshMs = GameScene.NIGHTMARE_SPAWN_REFRESH_MS;
+      this.spawnAliveCap = GameScene.NIGHTMARE_SPAWN_ALIVE_CAP;
+    } else {
+      this.spawnRefreshMs = GameScene.HARD_SPAWN_REFRESH_MS;
+      this.spawnAliveCap = GameScene.HARD_SPAWN_ALIVE_CAP;
+    }
+
     this.level.enemies.forEach((def) => {
       const minCp = def.afterCheckpoint ?? -1;
       if (minCp > this.checkpointIndex) return;
       if (this.onCheckpointPlatform(def.x, def.y)) return;
 
-      if (tutorial) {
-        // One of each, low HP, no reinforce spam in the showcase hall.
+      if (tutorial || easy) {
+        // Authored density only — no clone spots, no respawn / reinforce.
         this.addOverworldEnemy(def, (enemy) => this.dropEnemyCoins(enemy.sprite.x, enemy.sprite.y));
         return;
       }
 
-      // Spread clones across nearby platforms so spawn points cover more of the route.
+      // Hard / nightmare: spread clones across nearby platforms.
       for (const spot of this.spreadEnemySpots(def, GameScene.OVERWORLD_ENEMY_MULT)) {
         this.registerSpawnPoint({ ...def, ...spot });
       }
@@ -1372,7 +1512,7 @@ export class GameScene extends Phaser.Scene {
     const point = {
       def,
       current: null as Enemy | null,
-      nextAt: this.time.now + GameScene.SPAWN_REFRESH_MS,
+      nextAt: this.time.now + this.spawnRefreshMs,
       extras: [] as Enemy[],
     };
     point.current = this.addOverworldEnemy(def, (enemy) => this.onSpawnPointEnemyDied(point, enemy));
@@ -1386,7 +1526,7 @@ export class GameScene extends Phaser.Scene {
     this.dropEnemyCoins(enemy.sprite.x, enemy.sprite.y);
     if (point.current === enemy) {
       point.current = null;
-      point.nextAt = this.time.now + GameScene.SPAWN_REFRESH_MS;
+      point.nextAt = this.time.now + this.spawnRefreshMs;
       return;
     }
     point.extras = point.extras.filter((e) => e !== enemy && !e.dead);
@@ -1416,7 +1556,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Every 10s per spawn point:
+   * Per spawn point (interval from difficulty):
    * - if the primary died → respawn at the point
    * - if still alive → spawn an extra monster at the point
    */
@@ -1433,18 +1573,18 @@ export class GameScene extends Phaser.Scene {
         point.current = this.addOverworldEnemy(point.def, (enemy) =>
           this.onSpawnPointEnemyDied(point, enemy),
         );
-        point.nextAt = now + GameScene.SPAWN_REFRESH_MS;
+        point.nextAt = now + this.spawnRefreshMs;
         continue;
       }
 
       // Still alive → reinforce with a new monster at the spawn point.
-      if (aliveCount < GameScene.SPAWN_POINT_ALIVE_CAP) {
+      if (aliveCount < this.spawnAliveCap) {
         const extra = this.addOverworldEnemy(point.def, (enemy) =>
           this.onSpawnPointEnemyDied(point, enemy),
         );
         point.extras.push(extra);
       }
-      point.nextAt = now + GameScene.SPAWN_REFRESH_MS;
+      point.nextAt = now + this.spawnRefreshMs;
     }
   }
 
@@ -1777,7 +1917,18 @@ export class GameScene extends Phaser.Scene {
     this.events.emit('hud', this.getHudPayload());
   }
 
-  private static readonly NUKE_COOLDOWN_MS = 20_000;
+  private tryToggleSnowmanArmy(): void {
+    const snowman = this.getSnowmanPet();
+    if (!snowman) {
+      this.events.emit('toast', ZH.noSnowmanEquipped);
+      return;
+    }
+    const result = snowman.toggleSnowmanArmy();
+    if (result === 'deployed') this.events.emit('toast', ZH.snowmanArmyDeploy);
+    else if (result === 'recalled') this.events.emit('toast', ZH.snowmanArmyRecall);
+  }
+
+  private static readonly NUKE_COOLDOWN_MS = 600_000;
 
   private tryUseNuke(): void {
     const save = SaveSystem.load();
@@ -2501,6 +2652,16 @@ export class GameScene extends Phaser.Scene {
     return 1;
   }
 
+  private formatNukeCd(ms: number): string {
+    const totalSec = Math.ceil(ms / 1000);
+    if (totalSec >= 60) {
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return s > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${m}m`;
+    }
+    return `${totalSec}`;
+  }
+
   private getHudPayload() {
     const save = SaveSystem.load();
     const now = this.time.now;
@@ -2516,7 +2677,7 @@ export class GameScene extends Phaser.Scene {
       parts.push(`N${n}/${orbitCapacity(save.orbitLevel)}`);
     }
     if (save.equippedPassive === 'nuke') {
-      parts.push(nukeCdLeft > 0 ? `L${Math.ceil(nukeCdLeft / 1000)}` : 'L核');
+      parts.push(nukeCdLeft > 0 ? `L${this.formatNukeCd(nukeCdLeft)}` : 'L核');
     }
     return {
       timeMs: Math.floor(this.elapsedMs),

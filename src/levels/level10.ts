@@ -52,10 +52,7 @@ export const level10: LevelDef = {
     { x: 340, y: 340, w: 90, h: 18, onMs: 1100, offMs: 650 },
   ],
   
-        flameVents: [
-    { x: 208, y: 900, intervalMs: 700, height: 130 },
-  ],
-        acidPools: [
+  acidPools: [
     { x: 540, y: 360, w: 86 },
   ],
   seesaws: [{ x: 360, y: 560, w: 160 }],
@@ -74,11 +71,10 @@ export const level10: LevelDef = {
     { id: 'p10a', x: 780, y: 600, pairId: 'p10b' },
     { id: 'p10b', x: 760, y: 360, pairId: 'p10a' },
   ],
-      spikes: [
+  spikes: [
     { x: 557, y: 480, count: 3 },
     { x: 190, y: 420, count: 3 },
     { x: 548, y: 120, count: 3 },
-    { x: 336, y: 900, count: 3 },
   ],
   pads: [
     { x: 600, y: 680 },

@@ -25,8 +25,8 @@ import {
 } from '../game/shopCatalog';
 import {
   SaveSystem,
+  type DifficultyId,
   type EquippedPassive,
-  type EquippedPet,
   type EquippedSkill,
   type PassiveId,
   type PetId,
@@ -41,20 +41,32 @@ import { SoundSystem } from '../systems/SoundSystem';
 type ShopTab = 'look' | 'skills' | 'specials' | 'pets' | 'passives';
 
 export class MenuScene extends Phaser.Scene {
-  private mode: 'main' | 'levels' | 'confirmClear' | 'shop' = 'main';
+  private mode: 'main' | 'levels' | 'confirmClear' | 'shop' | 'profiles' | 'nameEntry' | 'confirmDeleteProfile' =
+    'main';
   private shopTab: ShopTab = 'look';
   private shopMsg = '';
+  private nameMsg = '';
+  private nameInput?: Phaser.GameObjects.DOMElement;
+  private nameEntryPurpose: 'create' | 'legacy' = 'create';
 
   constructor() {
     super('MenuScene');
   }
 
   create(): void {
-    this.mode = 'main';
+    SaveSystem.ensureProfilesReady();
     this.shopTab = 'look';
     this.shopMsg = '';
+    this.nameMsg = '';
     this.drawBackground();
-    this.renderMain();
+    if (!SaveSystem.hasActiveProfile()) {
+      this.mode = 'nameEntry';
+      this.nameEntryPurpose = SaveSystem.hasPendingLegacy() ? 'legacy' : 'create';
+      this.renderNameEntry();
+    } else {
+      this.mode = 'main';
+      this.renderMain();
+    }
     this.input.once('pointerdown', () => SoundSystem.unlock());
   }
 
@@ -127,9 +139,17 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private clearUi(): void {
+    this.destroyNameInput();
     this.children.list
       .filter((c) => (c as Phaser.GameObjects.GameObject & { getData?: (k: string) => unknown }).getData?.('ui'))
       .forEach((c) => c.destroy());
+  }
+
+  private destroyNameInput(): void {
+    if (this.nameInput) {
+      this.nameInput.destroy();
+      this.nameInput = undefined;
+    }
   }
 
   private tag(obj: Phaser.GameObjects.GameObject): void {
@@ -163,35 +183,38 @@ export class MenuScene extends Phaser.Scene {
     const save = SaveSystem.load();
 
     const title = this.add
-      .text(width / 2, 88, ZH.title, {
+      .text(width / 2, 72, ZH.title, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '64px',
+        fontSize: '58px',
         color: '#1f2d3d',
         fontStyle: 'bold',
       })
       .setOrigin(0.5);
     const sub = this.add
-      .text(width / 2, 142, ZH.subtitle, {
+      .text(width / 2, 118, ZH.subtitle, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#334455',
       })
       .setOrigin(0.5);
-    const coinBar = this.add
-      .text(width / 2, 176, `${ZH.coins}: ${save.coins}`, {
+    const activeName = SaveSystem.getActiveProfileName() ?? save.playerName;
+    const nameBar = this.add
+      .text(width / 2, 148, `${ZH.playerName(activeName || '???')}  ·  ${ZH.coins} ${save.coins}`, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '18px',
-        color: '#b7950b',
-        fontStyle: 'bold',
+        fontSize: '15px',
+        color: '#2c3e50',
       })
       .setOrigin(0.5);
     this.tag(title);
     this.tag(sub);
-    this.tag(coinBar);
+    this.tag(nameBar);
 
-    let y = 220;
+    this.renderDifficultyToggle(width / 2, 188, () => this.renderMain());
+
+    let y = 268;
     if (save.activeRun) {
       this.makeButton(width / 2, y, ZH.continueGame, () => {
+        if (!this.requireProfile()) return;
         this.scene.start('GameScene', {
           levelId: save.activeRun!.levelId,
           continueRun: true,
@@ -201,29 +224,83 @@ export class MenuScene extends Phaser.Scene {
     }
 
     this.makeButton(width / 2, y, save.activeRun ? ZH.selectLevel : ZH.startGame, () => {
+      if (!this.requireProfile()) return;
       this.mode = 'levels';
       this.renderLevels();
     });
     y += 56;
     this.makeButton(width / 2, y, ZH.shop, () => {
+      if (!this.requireProfile()) return;
       this.mode = 'shop';
       this.shopMsg = '';
       this.renderShop();
     });
     y += 56;
+    this.makeButton(width / 2, y, ZH.profiles, () => {
+      this.mode = 'profiles';
+      this.renderProfiles();
+    });
+    y += 56;
     this.makeButton(width / 2, y, ZH.clearSave, () => {
+      if (!this.requireProfile()) return;
       this.mode = 'confirmClear';
       this.renderConfirmClear();
     });
 
     const tip = this.add
-      .text(width / 2, height - 28, ZH.controls, {
+      .text(width / 2, height - 28, ZH.controlsShort, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
         fontSize: '13px',
         color: '#2c3e50',
       })
       .setOrigin(0.5);
     this.tag(tip);
+  }
+
+  /** Compact difficulty switch; persists and re-renders via `onChange`. */
+  private renderDifficultyToggle(cx: number, y: number, onChange: () => void): void {
+    const save = SaveSystem.load();
+    const hint =
+      save.difficulty === 'easy'
+        ? ZH.difficultyEasyHint
+        : save.difficulty === 'nightmare'
+          ? ZH.difficultyNightmareHint
+          : ZH.difficultyHardHint;
+    this.tag(
+      this.add
+        .text(cx, y - 16, hint, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '12px',
+          color: '#566573',
+        })
+        .setOrigin(0.5),
+    );
+
+    const mk = (id: DifficultyId, label: string, ox: number) => {
+      const selected = save.difficulty === id;
+      const bg = this.add
+        .rectangle(cx + ox, y + 14, 88, 30, selected ? THEME.buttonHover : THEME.button, 1)
+        .setStrokeStyle(2, THEME.playerStroke)
+        .setInteractive({ useHandCursor: true });
+      const text = this.add
+        .text(cx + ox, y + 14, label, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '14px',
+          color: THEME.uiLight,
+          fontStyle: selected ? 'bold' : 'normal',
+        })
+        .setOrigin(0.5);
+      this.tag(bg);
+      this.tag(text);
+      bg.on('pointerdown', () => {
+        if (save.difficulty === id) return;
+        SaveSystem.setDifficulty(id);
+        onChange();
+      });
+    };
+    mk('easy', ZH.difficultyEasy, -100);
+    mk('hard', ZH.difficultyHard, 0);
+    mk('nightmare', ZH.difficultyNightmare, 100);
   }
 
   private renderLevels(): void {
@@ -233,7 +310,7 @@ export class MenuScene extends Phaser.Scene {
     const save = SaveSystem.load();
 
     const title = this.add
-      .text(width / 2, 56, ZH.selectLevel, {
+      .text(width / 2, 40, ZH.selectLevel, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
         fontSize: '32px',
         color: '#1f2d3d',
@@ -241,6 +318,8 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.tag(title);
+
+    this.renderDifficultyToggle(width / 2, 78, () => this.renderLevels());
 
     LEVELS.forEach((level, i) => {
       const unlocked = level.index <= save.unlockedMax;
@@ -251,7 +330,7 @@ export class MenuScene extends Phaser.Scene {
       const col = i % 3;
       const row = Math.floor(i / 3);
       const x = width / 2 - 220 + col * 220;
-      const y = 100 + row * 52;
+      const y = 130 + row * 52;
       if (unlocked) {
         this.makeButton(x, y, label, () => {
           SaveSystem.startRun(level.id);
@@ -725,7 +804,7 @@ export class MenuScene extends Phaser.Scene {
           })
           .setOrigin(0, 0.5),
       );
-      if (save.equippedPet === 'none') {
+      if (save.equippedPets.length === 0) {
         this.tag(
           this.add
             .text(btnX, y, ZH.equipped, {
@@ -737,13 +816,13 @@ export class MenuScene extends Phaser.Scene {
             .setOrigin(0.5),
         );
       } else {
-        this.makeButton(btnX, y, ZH.unequip, () => this.onEquipPet('none'), 88, 30);
+        this.makeButton(btnX, y, ZH.unequip, () => this.onClearPets(), 88, 30);
       }
     }
 
     PETS.forEach((pet, i) => {
       const owned = save.ownedPets.includes(pet.id);
-      const equipped = save.equippedPet === pet.id;
+      const equipped = save.equippedPets.includes(pet.id);
       const y = 230 + i * 70;
       this.tag(
         this.add
@@ -765,13 +844,17 @@ export class MenuScene extends Phaser.Scene {
           })
           .setOrigin(0, 0.5),
       );
-      this.shopStatusOrButton(btnX, y, {
-        equipped,
-        owned,
-        buyLabel: `${ZH.buy} ${pet.price}`,
-        onEquip: () => this.onEquipPet(pet.id),
-        onBuy: () => this.onBuyPet(pet.id, pet.price),
-      });
+      if (owned && equipped) {
+        this.makeButton(btnX, y, ZH.unequip, () => this.onUnequipPet(pet.id), 88, 30);
+      } else {
+        this.shopStatusOrButton(btnX, y, {
+          equipped: false,
+          owned,
+          buyLabel: `${ZH.buy} ${pet.price}`,
+          onEquip: () => this.onEquipPet(pet.id),
+          onBuy: () => this.onBuyPet(pet.id, pet.price),
+        });
+      }
     });
   }
 
@@ -885,8 +968,20 @@ export class MenuScene extends Phaser.Scene {
     this.renderShop();
   }
 
-  private onEquipPet(id: EquippedPet): void {
+  private onEquipPet(id: PetId): void {
     SaveSystem.equipPet(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onUnequipPet(id: PetId): void {
+    SaveSystem.unequipPet(id);
+    this.shopMsg = '';
+    this.renderShop();
+  }
+
+  private onClearPets(): void {
+    SaveSystem.clearPets();
     this.shopMsg = '';
     this.renderShop();
   }
@@ -973,6 +1068,211 @@ export class MenuScene extends Phaser.Scene {
       this.shopMsg = '';
     }
     this.renderShop();
+  }
+
+  private requireProfile(): boolean {
+    if (SaveSystem.hasActiveProfile()) return true;
+    this.mode = 'nameEntry';
+    this.nameEntryPurpose = 'create';
+    this.nameMsg = ZH.needProfile;
+    this.renderNameEntry();
+    return false;
+  }
+
+  private nameErrorText(reason: 'empty' | 'tooLong' | 'invalid' | 'taken'): string {
+    switch (reason) {
+      case 'empty':
+        return ZH.nameEmpty;
+      case 'tooLong':
+        return ZH.nameTooLong;
+      case 'invalid':
+        return ZH.nameInvalid;
+      case 'taken':
+        return ZH.nameTaken;
+    }
+  }
+
+  private renderNameEntry(): void {
+    this.clearUi();
+    this.setHeroVisible(false);
+    const { width, height } = this.scale;
+    const panel = this.add
+      .rectangle(width / 2, height / 2, 480, 300, 0xffffff, 0.96)
+      .setStrokeStyle(3, THEME.button);
+    const title = this.add
+      .text(width / 2, height / 2 - 100, ZH.enterNameTitle, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '24px',
+        color: '#1f2d3d',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5);
+    const hint = this.add
+      .text(
+        width / 2,
+        height / 2 - 62,
+        this.nameEntryPurpose === 'legacy' ? ZH.enterNameLegacyHint : ZH.enterNameHint,
+        {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '14px',
+          color: '#566573',
+          align: 'center',
+          wordWrap: { width: 420 },
+        },
+      )
+      .setOrigin(0.5);
+    this.tag(panel);
+    this.tag(title);
+    this.tag(hint);
+
+    const inputHtml = document.createElement('input');
+    inputHtml.type = 'text';
+    inputHtml.maxLength = 12;
+    inputHtml.placeholder = ZH.namePlaceholder;
+    inputHtml.autocomplete = 'off';
+    inputHtml.style.cssText =
+      'width:260px;height:36px;font-size:16px;padding:0 10px;border:2px solid #2c3e50;border-radius:8px;outline:none;font-family:Segoe UI,Microsoft YaHei,sans-serif;';
+    this.nameInput = this.add.dom(width / 2, height / 2 - 8, inputHtml);
+    this.tag(this.nameInput);
+
+    if (this.nameMsg) {
+      const err = this.add
+        .text(width / 2, height / 2 + 28, this.nameMsg, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '14px',
+          color: '#c0392b',
+        })
+        .setOrigin(0.5);
+      this.tag(err);
+    }
+
+    const submit = () => {
+      const value = (inputHtml.value ?? '').toString();
+      const result = SaveSystem.createProfile(value);
+      if (!result.ok) {
+        this.nameMsg = this.nameErrorText(result.reason);
+        this.renderNameEntry();
+        return;
+      }
+      this.nameMsg = '';
+      this.destroyNameInput();
+      this.mode = 'main';
+      this.renderMain();
+    };
+
+    inputHtml.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        submit();
+      }
+    });
+
+    this.makeButton(width / 2, height / 2 + 78, ZH.nameConfirm, submit, 160, 44);
+
+    if (SaveSystem.listProfiles().length > 0 && this.nameEntryPurpose === 'create') {
+      this.makeButton(width / 2, height / 2 + 128, ZH.back, () => {
+        this.nameMsg = '';
+        this.mode = 'profiles';
+        this.renderProfiles();
+      }, 140, 40);
+    }
+
+    this.time.delayedCall(50, () => inputHtml.focus());
+  }
+
+  private renderProfiles(): void {
+    this.clearUi();
+    this.setHeroVisible(false);
+    const { width } = this.scale;
+    const names = SaveSystem.listProfiles();
+    const active = SaveSystem.getActiveProfileName();
+
+    const title = this.add
+      .text(width / 2, 72, ZH.selectProfile, {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '32px',
+        color: '#1f2d3d',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5);
+    this.tag(title);
+
+    if (names.length === 0) {
+      const empty = this.add
+        .text(width / 2, 160, ZH.noProfilesYet, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: '#566573',
+        })
+        .setOrigin(0.5);
+      this.tag(empty);
+    }
+
+    names.forEach((name, i) => {
+      const y = 140 + i * 56;
+      const label = name === active ? `${name} · ${ZH.equipped}` : name;
+      this.makeButton(width / 2 - 70, y, label, () => {
+        SaveSystem.selectProfile(name);
+        this.mode = 'main';
+        this.renderMain();
+      }, 260, 44);
+      this.makeButton(width / 2 + 160, y, ZH.deleteProfile, () => {
+        this.mode = 'confirmDeleteProfile';
+        this.renderConfirmDeleteProfile(name);
+      }, 120, 44);
+    });
+
+    const bottom = 140 + Math.max(1, names.length) * 56 + 20;
+    this.makeButton(width / 2, bottom, ZH.createProfile, () => {
+      this.nameMsg = '';
+      this.nameEntryPurpose = 'create';
+      this.mode = 'nameEntry';
+      this.renderNameEntry();
+    });
+    this.makeButton(width / 2, bottom + 52, ZH.back, () => {
+      if (!SaveSystem.hasActiveProfile()) {
+        this.mode = 'nameEntry';
+        this.nameEntryPurpose = 'create';
+        this.renderNameEntry();
+        return;
+      }
+      this.mode = 'main';
+      this.renderMain();
+    });
+  }
+
+  private renderConfirmDeleteProfile(name: string): void {
+    this.clearUi();
+    const { width, height } = this.scale;
+    const panel = this.add
+      .rectangle(width / 2, height / 2, 460, 220, 0xffffff, 0.95)
+      .setStrokeStyle(3, THEME.button);
+    const msg = this.add
+      .text(width / 2, height / 2 - 40, ZH.confirmDeleteProfile(name), {
+        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+        fontSize: '18px',
+        color: '#1f2d3d',
+        align: 'center',
+        wordWrap: { width: 400 },
+      })
+      .setOrigin(0.5);
+    this.tag(panel);
+    this.tag(msg);
+    this.makeButton(width / 2 - 90, height / 2 + 50, ZH.confirm, () => {
+      SaveSystem.deleteProfile(name);
+      if (!SaveSystem.hasActiveProfile()) {
+        this.mode = 'nameEntry';
+        this.nameEntryPurpose = 'create';
+        this.renderNameEntry();
+      } else {
+        this.mode = 'profiles';
+        this.renderProfiles();
+      }
+    });
+    this.makeButton(width / 2 + 90, height / 2 + 50, ZH.cancel, () => {
+      this.mode = 'profiles';
+      this.renderProfiles();
+    });
   }
 
   private renderConfirmClear(): void {

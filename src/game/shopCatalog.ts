@@ -85,7 +85,7 @@ export type PetDef = {
   texture: string;
 };
 
-/** Companion pets — one equipped at a time. */
+/** Companion pets — snowman + fish may equip together; kitten is exclusive. */
 export const PETS: PetDef[] = [
   { id: 'kitten', price: 100, texture: 'pet_kitten' },
   { id: 'snowman', price: 1000, texture: 'pet_snowman' },

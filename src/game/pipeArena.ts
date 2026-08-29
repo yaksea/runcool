@@ -3,7 +3,7 @@ import type { EnemyType } from '../levels/types';
 /** Default reward for clearing a pipe arena. */
 export const PIPE_ARENA_REWARD = 50;
 /** Last-level pipe arena reward. */
-export const PIPE_ARENA_FINAL_REWARD = 1000;
+export const PIPE_ARENA_FINAL_REWARD = 10_000;
 
 /** Invincibility after entering the pipe realm. */
 export const PIPE_ENTER_INVINCIBLE_MS = 5000;
@@ -11,7 +11,7 @@ export const PIPE_ENTER_INVINCIBLE_MS = 5000;
 /** Hard cap on monsters spawned inside a normal pipe arena. */
 export const PIPE_ARENA_MAX_ENEMIES = 40;
 /** Last-level pipe arena monster count. */
-export const PIPE_ARENA_FINAL_MAX_ENEMIES = 100;
+export const PIPE_ARENA_FINAL_MAX_ENEMIES = 1000;
 
 /** Weapon hits to kill each arena monster (3 shots). */
 export const PIPE_ARENA_HITS = 3;
@@ -51,7 +51,7 @@ export function pipeArenaReward(levelIndex: number): number {
  * Per-level monster packs (fills to the level's enemy cap).
  * Later levels unlock tougher species; leftovers redistribute to unlocked types.
  * Tutorial (index 0) gets a fixed gentle pack of 5.
- * Final level (12): 100 mixed monsters.
+ * Final level (12): 1000 mixed monsters.
  */
 export function pipeArenaPack(levelIndex: number): ArenaPack[] {
   if (levelIndex <= 0) {
@@ -65,15 +65,15 @@ export function pipeArenaPack(levelIndex: number): ArenaPack[] {
   const cap = pipeArenaEnemyCap(levelIndex);
   const packs: Array<ArenaPack & { minLevel: number }> = isFinalPipeArena(levelIndex)
     ? [
-        { type: 'slime', count: 16, minLevel: 1 },
-        { type: 'hopper', count: 14, minLevel: 1 },
-        { type: 'floater', count: 12, minLevel: 2 },
-        { type: 'chaser', count: 12, minLevel: 3 },
-        { type: 'bat', count: 10, minLevel: 4 },
-        { type: 'roller', count: 10, minLevel: 4 },
-        { type: 'ghost', count: 10, minLevel: 5 },
-        { type: 'spitter', count: 8, minLevel: 5 },
-        { type: 'tank', count: 8, minLevel: 6 },
+        { type: 'slime', count: 160, minLevel: 1 },
+        { type: 'hopper', count: 140, minLevel: 1 },
+        { type: 'floater', count: 120, minLevel: 2 },
+        { type: 'chaser', count: 120, minLevel: 3 },
+        { type: 'bat', count: 100, minLevel: 4 },
+        { type: 'roller', count: 100, minLevel: 4 },
+        { type: 'ghost', count: 100, minLevel: 5 },
+        { type: 'spitter', count: 80, minLevel: 5 },
+        { type: 'tank', count: 80, minLevel: 6 },
       ]
     : [
         { type: 'slime', count: 8, minLevel: 1 },

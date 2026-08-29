@@ -17,23 +17,22 @@ type PetMenuPayload = {
   open: boolean;
   petId?: PetId;
   behavior?: PetBehavior;
+  escortActive?: boolean;
 };
 
 export class UIScene extends Phaser.Scene {
-  private timeText!: Phaser.GameObjects.Text;
-  private deathText!: Phaser.GameObjects.Text;
-  private coinText!: Phaser.GameObjects.Text;
+  private levelName = '';
+  private statusText!: Phaser.GameObjects.Text;
+  private loadoutText!: Phaser.GameObjects.Text;
   private vitalsRoot!: Phaser.GameObjects.Container;
   private hpPips: Phaser.GameObjects.Image[] = [];
   private armorPips: Phaser.GameObjects.Image[] = [];
-  private weaponText!: Phaser.GameObjects.Text;
-  private skillText!: Phaser.GameObjects.Text;
-  private specialText!: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private interactHintText!: Phaser.GameObjects.Text;
   private tutorialLayer?: Phaser.GameObjects.Container;
   private tutorialTitle!: Phaser.GameObjects.Text;
   private tutorialBody!: Phaser.GameObjects.Text;
+  private tutorialVisible = false;
   private isTutorialLevel = false;
   private pauseLayer?: Phaser.GameObjects.Container;
   private bagLayer?: Phaser.GameObjects.Container;
@@ -48,48 +47,19 @@ export class UIScene extends Phaser.Scene {
 
   create(data: { levelIndex: number; isTutorial?: boolean }): void {
     this.isTutorialLevel = data.isTutorial === true;
-    const style = {
-      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-      fontSize: '11px',
-      color: THEME.uiText,
-      backgroundColor: '#ffffffcc',
-      padding: { x: 5, y: 2 },
-    };
-
-    const levelName =
+    this.levelName =
       this.isTutorialLevel || data.levelIndex === 0 ? ZH.tutorialLevel : ZH.level(data.levelIndex);
-    this.add.text(12, 8, levelName, style).setScrollFactor(0).setDepth(100);
 
-    this.timeText = this.add.text(12, 28, '0.0s', style).setScrollFactor(0).setDepth(100);
-    this.deathText = this.add.text(12, 48, `亡 0`, style).setScrollFactor(0).setDepth(100);
-    this.coinText = this.add.text(12, 68, `币 0`, style).setScrollFactor(0).setDepth(100);
-    this.buildVitalsBar();
-    this.weaponText = this.add
-      .text(12, 112, `武 ${ZH.weaponNone}`, style)
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.skillText = this.add
-      .text(12, 132, `技 ${ZH.skillNone}`, style)
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.specialText = this.add
-      .text(12, 152, `特 ${ZH.specialNone}`, style)
-      .setScrollFactor(0)
-      .setDepth(100);
-    this.add
-      .text(12, 172, 'B·K·M·N', style)
-      .setScrollFactor(0)
-      .setDepth(100);
-
+    this.buildCompactHud();
     this.makeAdHudButton();
 
     this.interactHintText = this.add
-      .text(THEME.width / 2, THEME.height - 36, '', {
+      .text(THEME.width / 2, THEME.height - 28, '', {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#ffffff',
-        backgroundColor: '#1f2d3dcc',
-        padding: { x: 12, y: 6 },
+        backgroundColor: '#1f2d3daa',
+        padding: { x: 10, y: 5 },
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
@@ -97,12 +67,12 @@ export class UIScene extends Phaser.Scene {
       .setAlpha(0);
 
     this.toastText = this.add
-      .text(THEME.width / 2, 160, '', {
+      .text(THEME.width / 2, 78, '', {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '20px',
+        fontSize: '18px',
         color: '#ffffff',
-        backgroundColor: '#1f2d3dcc',
-        padding: { x: 14, y: 8 },
+        backgroundColor: '#1f2d3daa',
+        padding: { x: 12, y: 6 },
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
@@ -128,21 +98,23 @@ export class UIScene extends Phaser.Scene {
         specialLabel: string;
         specialCdMs: number;
       }) => {
-        this.timeText.setText(`${(payload.timeMs / 1000).toFixed(1)}s`);
-        this.deathText.setText(`亡 ${payload.deaths}`);
-        this.coinText.setText(`币 ${payload.coins}`);
+        const t = (payload.timeMs / 1000).toFixed(1);
+        this.statusText.setText(
+          `${this.levelName}  ·  ${t}s  ·  亡${payload.deaths}  ·  币${payload.coins}`,
+        );
         this.refreshVitals(payload.hp, payload.maxHp, payload.armor, payload.maxArmor);
-        this.weaponText.setText(`武 ${payload.weaponLabel}`);
-        const cd = payload.skillCdMs > 0 ? ` ${(payload.skillCdMs / 1000).toFixed(1)}s` : '';
-        this.skillText.setText(`技 ${payload.skillLabel}${cd}`);
-        const scd =
-          payload.specialCdMs > 0 ? ` ${(payload.specialCdMs / 1000).toFixed(1)}s` : '';
-        this.specialText.setText(`特 ${payload.specialLabel}${scd}`);
+        const skillCd =
+          payload.skillCdMs > 0 ? `(${(payload.skillCdMs / 1000).toFixed(1)})` : '';
+        const specialCd =
+          payload.specialCdMs > 0 ? `(${(payload.specialCdMs / 1000).toFixed(1)})` : '';
+        this.loadoutText.setText(
+          `${payload.weaponLabel}  ·  ${payload.skillLabel}${skillCd}  ·  ${payload.specialLabel}${specialCd}`,
+        );
       },
     );
     game.events.on('toast', (msg: string) => this.showToast(msg));
     game.events.on('interactHint', (hint: string) => {
-      if (hint) {
+      if (hint && !this.tutorialVisible) {
         this.interactHintText.setText(hint);
         this.interactHintText.setAlpha(1);
       } else {
@@ -193,37 +165,72 @@ export class UIScene extends Phaser.Scene {
     });
   }
 
+  /** Single top-left cluster: status · vitals · loadout (no stacked white chips). */
+  private buildCompactHud(): void {
+    const rootX = 10;
+    const rootY = 8;
+    const panel = this.add
+      .rectangle(0, 0, 300, 64, 0x1f2d3d, 0.48)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0xffffff, 0.18);
+
+    const lineStyle = {
+      fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+      fontSize: '12px',
+      color: THEME.uiLight,
+    };
+
+    this.statusText = this.add
+      .text(10, 7, `${this.levelName}  ·  0.0s  ·  亡0  ·  币0`, lineStyle)
+      .setOrigin(0, 0);
+
+    this.vitalsRoot = this.buildVitalsBar(10, 28);
+
+    this.loadoutText = this.add
+      .text(10, 44, `${ZH.weaponNone}  ·  ${ZH.skillNone}  ·  ${ZH.specialNone}`, {
+        ...lineStyle,
+        fontSize: '11px',
+        color: '#d6eaf8',
+      })
+      .setOrigin(0, 0);
+
+    this.add
+      .container(rootX, rootY, [panel, this.statusText, this.vitalsRoot, this.loadoutText])
+      .setScrollFactor(0)
+      .setDepth(100);
+  }
+
   private buildTutorialPanel(): void {
     const cx = THEME.width / 2;
-    const cy = THEME.height - 96;
+    const cy = THEME.height - 72;
     const bg = this.add
-      .rectangle(0, 0, 620, 88, 0x1f2d3d, 0.88)
-      .setStrokeStyle(2, 0x5dade2);
+      .rectangle(0, 0, 540, 72, 0x1f2d3d, 0.82)
+      .setStrokeStyle(1, 0x5dade2, 0.85);
     this.tutorialTitle = this.add
-      .text(-290, -28, '', {
+      .text(-250, -18, '', {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '18px',
+        fontSize: '15px',
         color: '#f7dc6f',
         fontStyle: 'bold',
       })
       .setOrigin(0, 0.5);
     this.tutorialBody = this.add
-      .text(-290, 8, '', {
+      .text(-250, 10, '', {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '15px',
+        fontSize: '13px',
         color: '#ffffff',
-        wordWrap: { width: 430 },
+        wordWrap: { width: 380 },
       })
       .setOrigin(0, 0.5);
 
     const dismissBg = this.add
-      .rectangle(230, 0, 130, 36, THEME.button)
+      .rectangle(210, 0, 100, 32, THEME.button)
       .setStrokeStyle(2, THEME.playerStroke)
       .setInteractive({ useHandCursor: true });
     const dismissLabel = this.add
-      .text(230, 0, ZH.tutorialDismiss, {
+      .text(210, 0, ZH.tutorialDismiss, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '13px',
+        fontSize: '12px',
         color: '#ffffff',
       })
       .setOrigin(0.5);
@@ -244,52 +251,49 @@ export class UIScene extends Phaser.Scene {
   private showTutorialTip(tip: { title: string; body: string } | null): void {
     if (!this.tutorialLayer) return;
     if (!tip) {
+      this.tutorialVisible = false;
       this.tutorialLayer.setVisible(false);
       return;
     }
+    this.tutorialVisible = true;
     this.tutorialTitle.setText(tip.title);
     this.tutorialBody.setText(tip.body);
     this.tutorialLayer.setVisible(true);
+    this.interactHintText.setAlpha(0);
   }
 
-  private buildVitalsBar(): void {
-    const bg = this.add.rectangle(0, 0, 200, 20, 0xffffff, 0.8).setOrigin(0, 0.5);
+  private buildVitalsBar(x: number, y: number): Phaser.GameObjects.Container {
     const labelStyle = {
       fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
       fontSize: '11px',
-      color: THEME.uiText,
+      color: '#ecf0f1',
     };
 
     const rowY = 0;
-    const hpLabel = this.add.text(6, rowY, '命', labelStyle).setOrigin(0, 0.5);
+    const hpLabel = this.add.text(0, rowY, '命', labelStyle).setOrigin(0, 0.5);
     this.hpPips = [];
-    const hx = 6 + hpLabel.width + 8;
+    const hx = hpLabel.width + 6;
     for (let i = 0; i < 3; i++) {
-      const pip = this.add.image(hx + i * 14, rowY, 'hud_hp_on').setOrigin(0.5).setDisplaySize(12, 12);
+      const pip = this.add.image(hx + i * 13, rowY, 'hud_hp_on').setOrigin(0.5).setDisplaySize(11, 11);
       this.hpPips.push(pip);
     }
 
     const armorLabel = this.add
-      .text(hx + 3 * 14 + 8, rowY, '甲', labelStyle)
+      .text(hx + 3 * 13 + 10, rowY, '甲', labelStyle)
       .setOrigin(0, 0.5);
     this.armorPips = [];
-    const ax = armorLabel.x + armorLabel.width + 8;
+    const ax = armorLabel.x + armorLabel.width + 6;
     for (let i = 0; i < 3; i++) {
       const pip = this.add
-        .image(ax + i * 14, rowY, 'hud_armor_on')
+        .image(ax + i * 13, rowY, 'hud_armor_on')
         .setOrigin(0.5)
-        .setDisplaySize(12, 12);
+        .setDisplaySize(11, 11);
       this.armorPips.push(pip);
     }
 
-    bg.width = ax + 3 * 14 + 8;
-
-    this.vitalsRoot = this.add
-      .container(12, 92, [bg, hpLabel, ...this.hpPips, armorLabel, ...this.armorPips])
-      .setScrollFactor(0)
-      .setDepth(100);
-
+    const root = this.add.container(x, y, [hpLabel, ...this.hpPips, armorLabel, ...this.armorPips]);
     this.refreshVitals(3, 3, 3, 3);
+    return root;
   }
 
   private refreshVitals(hp: number, maxHp: number, armor: number, maxArmor: number): void {
@@ -313,22 +317,22 @@ export class UIScene extends Phaser.Scene {
 
   private makeAdHudButton(): void {
     const game = this.scene.get('GameScene') as GameScene;
-    const x = THEME.width - 88;
-    const y = 28;
+    const x = THEME.width - 40;
+    const y = 22;
     const c = this.add.container(x, y).setDepth(100).setScrollFactor(0);
     const bg = this.add
-      .rectangle(0, 0, 150, 36, THEME.button)
-      .setStrokeStyle(2, THEME.playerStroke)
+      .rectangle(0, 0, 64, 28, THEME.button, 0.92)
+      .setStrokeStyle(1, THEME.playerStroke)
       .setInteractive({ useHandCursor: true });
     const label = this.add
-      .text(0, 0, ZH.adSkip, {
+      .text(0, 0, ZH.adSkipShort, {
         fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '15px',
+        fontSize: '13px',
         color: '#ffffff',
       })
       .setOrigin(0.5);
     bg.on('pointerover', () => bg.setFillStyle(THEME.buttonHover));
-    bg.on('pointerout', () => bg.setFillStyle(THEME.button));
+    bg.on('pointerout', () => bg.setFillStyle(THEME.button, 0.92));
     bg.on('pointerdown', () => game.openAdSkip());
     c.add([bg, label]);
     this.adHudBtn = c;
@@ -574,6 +578,9 @@ export class UIScene extends Phaser.Scene {
     const cy = THEME.height / 2;
     const petName = petLabel(payload.petId ?? 'none');
     const current = payload.behavior ?? 'attack';
+    const isSnowman = payload.petId === 'snowman';
+    const escortOn = payload.escortActive === true;
+    const panelH = isSnowman ? 360 : 300;
 
     const c = this.add.container(0, 0).setDepth(215).setScrollFactor(0);
     const dim = this.add
@@ -583,12 +590,12 @@ export class UIScene extends Phaser.Scene {
     c.add(dim);
     c.add(
       this.add
-        .rectangle(cx, cy, 360, 300, 0xffffff, 0.97)
+        .rectangle(cx, cy, 360, panelH, 0xffffff, 0.97)
         .setStrokeStyle(3, THEME.button),
     );
     c.add(
       this.add
-        .text(cx, cy - 118, ZH.petMenuTitle, {
+        .text(cx, cy - panelH / 2 + 32, ZH.petMenuTitle, {
           fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
           fontSize: '26px',
           color: '#1f2d3d',
@@ -598,7 +605,7 @@ export class UIScene extends Phaser.Scene {
     );
     c.add(
       this.add
-        .text(cx, cy - 88, `${petName} · ${ZH.petMenuHint}`, {
+        .text(cx, cy - panelH / 2 + 62, `${petName} · ${ZH.petMenuHint}`, {
           fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
           fontSize: '13px',
           color: '#667788',
@@ -611,11 +618,12 @@ export class UIScene extends Phaser.Scene {
       { id: 'attack', label: ZH.petModeAttack },
       { id: 'quiet', label: ZH.petModeQuiet },
     ];
+    const startY = cy - panelH / 2 + 108;
     modes.forEach((mode, i) => {
-      const y = cy - 36 + i * 52;
+      const y = startY + i * 48;
       const active = current === mode.id;
       const bg = this.add
-        .rectangle(cx, y, 260, 42, active ? THEME.button : 0xf4f7fa)
+        .rectangle(cx, y, 260, 40, active ? THEME.button : 0xf4f7fa)
         .setStrokeStyle(2, active ? THEME.playerStroke : 0xcbd5e1)
         .setInteractive({ useHandCursor: true });
       const text = this.add
@@ -636,7 +644,31 @@ export class UIScene extends Phaser.Scene {
       c.add([bg, text]);
     });
 
-    this.makeBtn(c, cx, cy + 118, ZH.back, () => game.closePetMenu());
+    if (isSnowman) {
+      const y = startY + modes.length * 48 + 4;
+      const bg = this.add
+        .rectangle(cx, y, 260, 40, escortOn ? THEME.buttonHover : 0xeaf6ff)
+        .setStrokeStyle(2, escortOn ? THEME.playerStroke : 0x85c1e9)
+        .setInteractive({ useHandCursor: true });
+      const text = this.add
+        .text(cx, y, escortOn ? ZH.snowmanEscortActive : ZH.snowmanEscort, {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '16px',
+          color: escortOn ? '#ffffff' : '#1f2d3d',
+          fontStyle: escortOn ? 'bold' : 'normal',
+        })
+        .setOrigin(0.5);
+      bg.on('pointerover', () => {
+        if (!escortOn) bg.setFillStyle(0xd6eaf8);
+      });
+      bg.on('pointerout', () => {
+        if (!escortOn) bg.setFillStyle(0xeaf6ff);
+      });
+      bg.on('pointerdown', () => game.toggleSnowmanEscort());
+      c.add([bg, text]);
+    }
+
+    this.makeBtn(c, cx, cy + panelH / 2 - 36, ZH.back, () => game.closePetMenu());
     this.petMenuLayer = c;
   }
 

@@ -51,18 +51,16 @@ export const level5: LevelDef = {
     { id: 'p5a', x: 1100, y: 180, pairId: 'p5b' },
     { id: 'p5b', x: 1900, y: 680, pairId: 'p5a' },
   ],
-      geysers: [
+  geysers: [
     { x: 550, y: 240, intervalMs: 1400, force: 780 },
-    { x: 55, y: 240, intervalMs: 1600, force: 740 },
   ],
-      flameVents: [
+  flameVents: [
     { x: 1287, y: 260, intervalMs: 700, height: 145 },
     { x: 1560, y: 320, intervalMs: 650, height: 150 },
     { x: 2207, y: 760, intervalMs: 700, height: 140 },
     { x: 2043, y: 480, intervalMs: 750, height: 130 },
   ],
-      acidPools: [
-    { x: 165, y: 240, w: 84 },
+  acidPools: [
     { x: 1667, y: 760, w: 90 },
     { x: 2645, y: 760, w: 80 },
     { x: 2775, y: 760, w: 86 },

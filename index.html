@@ -1,13 +1,49 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>跑酷酷</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>跑酷酷</title>
+  <script src="https://cdn.y8.com/minimal-sdk/2-0/y8.min.js" async></script>
+  <script>
+    let y8Sdk;
+
+    window.addEventListener("y8sdk.ready", function () {
+      y8Sdk = y8.sdk();
+
+      const appConfig = {
+        appId: '6a924ec30b4fd883b1200a36',
+        autoLogin: true
+      };
+
+      // adConfig is optional — omit it if your game doesn't use ads
+      const adConfig = {
+        gameId: '281693',
+        preloadAdBreaks: 'on',
+        sound: 'on',
+        onReady: () => { }
+      };
+
+      y8Sdk.init(appConfig, adConfig);
+      y8Sdk.onAuth((user, error) => {
+        // Bridge auth state into the game (see src/systems/Y8Auth.ts).
+        window.dispatchEvent(new CustomEvent('y8:auth', { detail: { user, error } }));
+      });
+    }, { once: true });
+
+    // Handle the case where the SDK already loaded
+    if (window.y8 && window.y8.emitReadyEvent) {
+      window.y8.emitReadyEvent();
+    }
+  </script>
+
+</head>
+
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>

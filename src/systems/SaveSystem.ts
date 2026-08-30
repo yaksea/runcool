@@ -83,6 +83,32 @@ const PROFILE_KEY = 'runcool.profiles.v1';
 const NAME_MIN = 1;
 const NAME_MAX = 12;
 
+/** Logged-in users: single server-backed profile, cached locally for sync reads. */
+const CLOUD_KEY = 'runcool.cloudsave.v1';
+
+export type AuthMode = 'guest' | 'user';
+export type CloudUser = { id: string; nickname: string };
+
+let authMode: AuthMode = 'guest';
+let cloudUser: CloudUser | null = null;
+let saveHook: ((data: SaveData) => void) | null = null;
+
+/**
+ * Storage backend for the current auth mode.
+ * Guest → sessionStorage (progress lives for the tab session only).
+ * Logged-in → localStorage cache of the server save (write-through).
+ */
+function store(): Storage {
+  if (authMode === 'guest') {
+    try {
+      return sessionStorage;
+    } catch {
+      return localStorage;
+    }
+  }
+  return localStorage;
+}
+
 type ProfileIndex = {
   active: string | null;
   names: string[];
@@ -112,7 +138,7 @@ function profileSaveKey(name: string): string {
 
 function loadProfileIndex(): ProfileIndex {
   try {
-    const raw = localStorage.getItem(PROFILE_KEY);
+    const raw = store().getItem(PROFILE_KEY);
     if (!raw) return { active: null, names: [] };
     const data = JSON.parse(raw) as ProfileIndex;
     const names = Array.isArray(data.names)
@@ -127,7 +153,7 @@ function loadProfileIndex(): ProfileIndex {
 }
 
 function saveProfileIndex(index: ProfileIndex): void {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(index));
+  store().setItem(PROFILE_KEY, JSON.stringify(index));
 }
 
 /** Case-insensitive identity for uniqueness checks. */
@@ -462,13 +488,14 @@ function parseSaveRaw(raw: string | null, fallbackName = ''): SaveData {
 function migrateLegacySave(): void {
   const index = loadProfileIndex();
   if (index.names.length > 0) return;
-  const legacy = localStorage.getItem(LEGACY_KEY);
+  // Pre-cloud saves lived in localStorage; stage them into the active store.
+  const legacy = localStorage.getItem(LEGACY_KEY) ?? store().getItem(LEGACY_KEY);
   if (!legacy) return;
   // Keep raw until the player names this migrated slot.
-  localStorage.setItem(`${LEGACY_KEY}:__legacy__`, legacy);
+  store().setItem(`${LEGACY_KEY}:__legacy__`, legacy);
   saveProfileIndex({ active: null, names: [] });
   // Marker so Menu can prompt: has pending legacy.
-  localStorage.setItem(`${PROFILE_KEY}:pendingLegacy`, '1');
+  store().setItem(`${PROFILE_KEY}:pendingLegacy`, '1');
 }
 
 /** One-shot: only the :6001 origin, and only the active profile there. */
@@ -476,26 +503,28 @@ const PORT_6001_COIN_GRANT_KEY = 'runcool.devGrant.port6001.1m.v1';
 const PORT_6001_COIN_GRANT = 1_000_000;
 
 function maybeGrantPort6001Coins(): void {
+  if (authMode !== 'guest') return;
   if (typeof location === 'undefined' || location.port !== '6001') return;
-  if (localStorage.getItem(PORT_6001_COIN_GRANT_KEY) === '1') return;
+  if (store().getItem(PORT_6001_COIN_GRANT_KEY) === '1') return;
   const index = loadProfileIndex();
   if (!index.active) return;
-  const raw = localStorage.getItem(profileSaveKey(index.active));
+  const raw = store().getItem(profileSaveKey(index.active));
   const data = parseSaveRaw(raw, index.active);
   data.coins = Math.max(data.coins, PORT_6001_COIN_GRANT);
-  localStorage.setItem(profileSaveKey(index.active), JSON.stringify(data));
-  localStorage.setItem(PORT_6001_COIN_GRANT_KEY, '1');
+  store().setItem(profileSaveKey(index.active), JSON.stringify(data));
+  store().setItem(PORT_6001_COIN_GRANT_KEY, '1');
 }
 
 export const SaveSystem = {
-  /** Call once at menu boot. */
+  /** Call once at menu boot. No-op while a cloud profile is active. */
   ensureProfilesReady(): void {
+    if (authMode === 'user') return;
     migrateLegacySave();
     maybeGrantPort6001Coins();
   },
 
   hasPendingLegacy(): boolean {
-    return localStorage.getItem(`${PROFILE_KEY}:pendingLegacy`) === '1';
+    return store().getItem(`${PROFILE_KEY}:pendingLegacy`) === '1';
   },
 
   listProfiles(): string[] {
@@ -503,10 +532,12 @@ export const SaveSystem = {
   },
 
   getActiveProfileName(): string | null {
+    if (authMode === 'user') return cloudUser?.nickname ?? null;
     return loadProfileIndex().active;
   },
 
   hasActiveProfile(): boolean {
+    if (authMode === 'user') return !!cloudUser;
     return !!loadProfileIndex().active;
   },
 
@@ -533,15 +564,15 @@ export const SaveSystem = {
 
     let data = defaultSave(name);
     if (this.hasPendingLegacy()) {
-      const legacyRaw = localStorage.getItem(`${LEGACY_KEY}:__legacy__`);
+      const legacyRaw = store().getItem(`${LEGACY_KEY}:__legacy__`);
       data = parseSaveRaw(legacyRaw, name);
       data.playerName = name;
-      localStorage.removeItem(`${LEGACY_KEY}:__legacy__`);
-      localStorage.removeItem(`${PROFILE_KEY}:pendingLegacy`);
+      store().removeItem(`${LEGACY_KEY}:__legacy__`);
+      store().removeItem(`${PROFILE_KEY}:pendingLegacy`);
       localStorage.removeItem(LEGACY_KEY);
     }
 
-    localStorage.setItem(profileSaveKey(name), JSON.stringify(data));
+    store().setItem(profileSaveKey(name), JSON.stringify(data));
     index.names.push(name);
     index.active = name;
     saveProfileIndex(index);
@@ -558,12 +589,12 @@ export const SaveSystem = {
     return true;
   },
 
-  /** Delete the active profile (or named one). */
+  /** Delete the active profile (or named one). Guest mode only. */
   deleteProfile(name?: string): void {
     const index = loadProfileIndex();
     const target = name ?? index.active;
     if (!target) return;
-    localStorage.removeItem(profileSaveKey(target));
+    store().removeItem(profileSaveKey(target));
     index.names = index.names.filter((n) => n !== target);
     if (index.active === target) {
       index.active = index.names[0] ?? null;
@@ -572,26 +603,43 @@ export const SaveSystem = {
   },
 
   load(): SaveData {
+    if (authMode === 'user' && cloudUser) {
+      const cached = parseSaveRaw(localStorage.getItem(CLOUD_KEY), cloudUser.nickname);
+      cached.playerName = cloudUser.nickname;
+      return cached;
+    }
     const index = loadProfileIndex();
     if (!index.active) return defaultSave();
-    const raw = localStorage.getItem(profileSaveKey(index.active));
+    const raw = store().getItem(profileSaveKey(index.active));
     const data = parseSaveRaw(raw, index.active);
     data.playerName = index.active;
     return data;
   },
 
   save(data: SaveData): void {
+    if (authMode === 'user' && cloudUser) {
+      data.playerName = cloudUser.nickname;
+      localStorage.setItem(CLOUD_KEY, JSON.stringify(data));
+      saveHook?.(data);
+      return;
+    }
     const index = loadProfileIndex();
     if (!index.active) return;
     data.playerName = index.active;
-    localStorage.setItem(profileSaveKey(index.active), JSON.stringify(data));
+    store().setItem(profileSaveKey(index.active), JSON.stringify(data));
   },
 
   /** Clears the active profile's progress (keeps the name / slot). */
   clear(): void {
+    if (authMode === 'user' && cloudUser) {
+      const data = defaultSave(cloudUser.nickname);
+      localStorage.setItem(CLOUD_KEY, JSON.stringify(data));
+      saveHook?.(data);
+      return;
+    }
     const index = loadProfileIndex();
     if (!index.active) return;
-    localStorage.setItem(profileSaveKey(index.active), JSON.stringify(defaultSave(index.active)));
+    store().setItem(profileSaveKey(index.active), JSON.stringify(defaultSave(index.active)));
   },
 
   getInventory(): InventoryWeapon[] {
@@ -929,5 +977,41 @@ export const SaveSystem = {
 
   allWeaponSlots(): InventoryWeapon[] {
     return [...ALL_WEAPONS];
+  },
+
+  // —— Cloud (logged-in) mode management, driven by CloudSync ——
+
+  getMode(): AuthMode {
+    return authMode;
+  },
+
+  getCloudUser(): CloudUser | null {
+    return cloudUser;
+  },
+
+  /** Register a hook fired after every save in user mode (used by CloudSync). */
+  setSaveHook(fn: ((data: SaveData) => void) | null): void {
+    saveHook = fn;
+  },
+
+  /**
+   * Switch to the logged-in profile. `data` may be raw/untrusted server JSON or
+   * a merged save — it is normalized through parseSaveRaw on the next load().
+   */
+  enterUserMode(user: CloudUser, data: SaveData | null): void {
+    authMode = 'user';
+    cloudUser = user;
+    const normalized = data
+      ? parseSaveRaw(JSON.stringify(data), user.nickname)
+      : defaultSave(user.nickname);
+    normalized.playerName = user.nickname;
+    localStorage.setItem(CLOUD_KEY, JSON.stringify(normalized));
+  },
+
+  /** Return to guest mode; guest sessionStorage profiles stay intact. */
+  exitUserMode(): void {
+    authMode = 'guest';
+    cloudUser = null;
+    localStorage.removeItem(CLOUD_KEY);
   },
 };

@@ -36,6 +36,8 @@ import {
   type SkillId,
   type SpecialId,
 } from '../systems/SaveSystem';
+import { CloudSync } from '../systems/CloudSync';
+import { Y8Auth } from '../systems/Y8Auth';
 import { SoundSystem } from '../systems/SoundSystem';
 
 type ShopTab = 'look' | 'skills' | 'specials' | 'pets' | 'passives';
@@ -48,26 +50,50 @@ export class MenuScene extends Phaser.Scene {
   private nameMsg = '';
   private nameInput?: Phaser.GameObjects.DOMElement;
   private nameEntryPurpose: 'create' | 'legacy' = 'create';
+  private cloudBound = false;
+  private authMsg = '';
 
   constructor() {
     super('MenuScene');
   }
 
   create(): void {
+    this.drawBackground();
+    this.input.once('pointerdown', () => SoundSystem.unlock());
+
+    // Re-render whenever auth mode flips (login completed / logout).
+    if (!this.cloudBound) {
+      this.cloudBound = true;
+      CloudSync.onModeChange(() => this.enterMenuFlow());
+      CloudSync.onAuthMessage((msg) => {
+        this.authMsg = msg;
+        if (this.mode === 'main' && this.scene.isActive()) this.renderMain();
+        this.time.delayedCall(6000, () => {
+          if (this.authMsg === msg && this.mode === 'main' && this.scene.isActive()) {
+            this.authMsg = '';
+            this.renderMain();
+          }
+        });
+      });
+    }
+    // Wait for the initial auth determination (and any deferred login).
+    CloudSync.beforeMenu(() => this.enterMenuFlow());
+  }
+
+  /** Shared entry flow once cloud auth state is known. */
+  private enterMenuFlow(): void {
     SaveSystem.ensureProfilesReady();
     this.shopTab = 'look';
     this.shopMsg = '';
     this.nameMsg = '';
-    this.drawBackground();
-    if (!SaveSystem.hasActiveProfile()) {
+    if (SaveSystem.hasActiveProfile()) {
+      this.mode = 'main';
+      this.renderMain();
+    } else {
       this.mode = 'nameEntry';
       this.nameEntryPurpose = SaveSystem.hasPendingLegacy() ? 'legacy' : 'create';
       this.renderNameEntry();
-    } else {
-      this.mode = 'main';
-      this.renderMain();
     }
-    this.input.once('pointerdown', () => SoundSystem.unlock());
   }
 
   private setHeroVisible(visible: boolean): void {
@@ -197,17 +223,55 @@ export class MenuScene extends Phaser.Scene {
         color: '#334455',
       })
       .setOrigin(0.5);
+    const isCloud = SaveSystem.getMode() === 'user';
     const activeName = SaveSystem.getActiveProfileName() ?? save.playerName;
+    const modeTag = isCloud ? ZH.cloudTag : ZH.guestTag;
     const nameBar = this.add
-      .text(width / 2, 148, `${ZH.playerName(activeName || '???')}  ·  ${ZH.coins} ${save.coins}`, {
-        fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
-        fontSize: '15px',
-        color: '#2c3e50',
-      })
+      .text(
+        width / 2,
+        148,
+        `${ZH.playerName(activeName || '???')}  ·  ${modeTag}  ·  ${ZH.coins} ${save.coins}`,
+        {
+          fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+          fontSize: '15px',
+          color: '#2c3e50',
+        },
+      )
       .setOrigin(0.5);
     this.tag(title);
     this.tag(sub);
     this.tag(nameBar);
+
+    if (!isCloud) {
+      this.tag(
+        this.add
+          .text(width / 2, height - 46, ZH.y8GuestHint, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '12px',
+            color: '#566573',
+          })
+          .setOrigin(0.5),
+      );
+    }
+    if (this.authMsg) {
+      this.tag(
+        this.add
+          .text(width / 2, 230, this.authMsg, {
+            fontFamily: 'Segoe UI, Microsoft YaHei, sans-serif',
+            fontSize: '13px',
+            color: '#c0392b',
+            wordWrap: { width: 620 },
+          })
+          .setOrigin(0.5),
+      );
+    }
+
+    // Corner auth control: login (guest) / logout (cloud).
+    if (isCloud) {
+      this.makeButton(width - 78, 32, ZH.y8Logout, () => CloudSync.logout(), 140, 36);
+    } else if (Y8Auth.isAvailable()) {
+      this.makeButton(width - 78, 32, ZH.y8Login, () => CloudSync.login(), 140, 36);
+    }
 
     this.renderDifficultyToggle(width / 2, 188, () => this.renderMain());
 
@@ -236,11 +300,14 @@ export class MenuScene extends Phaser.Scene {
       this.renderShop();
     });
     y += 56;
-    this.makeButton(width / 2, y, ZH.profiles, () => {
-      this.mode = 'profiles';
-      this.renderProfiles();
-    });
-    y += 56;
+    // Guest profiles are local; cloud users have a single server-backed profile.
+    if (!isCloud) {
+      this.makeButton(width / 2, y, ZH.profiles, () => {
+        this.mode = 'profiles';
+        this.renderProfiles();
+      });
+      y += 56;
+    }
     this.makeButton(width / 2, y, ZH.clearSave, () => {
       if (!this.requireProfile()) return;
       this.mode = 'confirmClear';

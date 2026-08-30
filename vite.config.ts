@@ -8,5 +8,9 @@ export default defineConfig({
     host: '127.0.0.1',
     strictPort: true,
     open: true,
+    // Cloud-save backend (NestJS) during development.
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+    },
   },
 });
